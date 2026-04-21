@@ -1,0 +1,9 @@
+venv/
+__pycache__/
+*.pyc
+*.pyo
+.env
+rag_new/data/vector_db/
+rag_new/data/papers/
+rag_new/output/
+rag_new/models/
