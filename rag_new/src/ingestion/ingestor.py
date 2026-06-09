@@ -5,6 +5,8 @@ import os
 import ssl
 import sys
 import time
+import urllib.parse
+import xml.etree.ElementTree as ET
 import certifi
 import urllib.request
 
@@ -56,6 +58,69 @@ class ArxivIngestor:
             logger.warning("Could not save metadata JSON: %s", e)
 
     # ------------------------------------------------------------------
+    # Fallback search via urllib (avoids the arxiv library's 100-result page requests)
+    # ------------------------------------------------------------------
+    _ARXIV_NS = "http://www.w3.org/2005/Atom"
+
+    def _fallback_search(self, query: str) -> list:
+        """
+        Query the arXiv Atom API directly with urllib.
+        Returns a list of mock result objects with .title, .pdf_url, .get_short_id(),
+        .authors, .published, and .summary attributes so the caller code is unchanged.
+        """
+        url = (
+            "http://export.arxiv.org/api/query?"
+            f"search_query=all:{urllib.parse.quote(query)}"
+            f"&start=0&max_results={self.max_results}"
+            "&sortBy=relevance&sortOrder=descending"
+        )
+        try:
+            req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
+            with urllib.request.urlopen(req, context=self.ssl_context, timeout=30) as resp:
+                xml_data = resp.read()
+        except Exception as e:
+            logger.error("Fallback arXiv search also failed: %s", e)
+            return []
+
+        class _FakeAuthor:
+            def __init__(self, name): self.name = name
+
+        class _FakeResult:
+            def __init__(self, arxiv_id, title, pdf_url, authors, published, summary):
+                self._id       = arxiv_id
+                self.title     = title
+                self.pdf_url   = pdf_url
+                self.authors   = authors
+                self.published = published
+                self.summary   = summary
+            def get_short_id(self): return self._id
+
+        ns = self._ARXIV_NS
+        root = ET.fromstring(xml_data)
+        results = []
+        for entry in root.findall(f"{{{ns}}}entry"):
+            arxiv_id_full = (entry.findtext(f"{{{ns}}}id") or "").strip()
+            arxiv_id = arxiv_id_full.split("/abs/")[-1].strip()
+            title = (entry.findtext(f"{{{ns}}}title") or "").replace("\n", " ").strip()
+            summary = (entry.findtext(f"{{{ns}}}summary") or "").replace("\n", " ").strip()
+            published = (entry.findtext(f"{{{ns}}}published") or "")[:10]
+            authors = [
+                _FakeAuthor((a.findtext(f"{{{ns}}}name") or "").strip())
+                for a in entry.findall(f"{{{ns}}}author")
+            ]
+            pdf_url = ""
+            for link in entry.findall(f"{{{ns}}}link"):
+                if link.attrib.get("type") == "application/pdf":
+                    pdf_url = link.attrib.get("href", "")
+                    break
+            if not pdf_url and arxiv_id:
+                pdf_url = f"https://arxiv.org/pdf/{arxiv_id}.pdf"
+            if title and arxiv_id:
+                results.append(_FakeResult(arxiv_id, title, pdf_url, authors, published, summary))
+        logger.info("Fallback search returned %d results.", len(results))
+        return results
+
+    # ------------------------------------------------------------------
     # Download helpers
     # ------------------------------------------------------------------
     def _clean_download_dir(self):
@@ -71,6 +136,31 @@ class ArxivIngestor:
                     logger.warning("Error deleting %s: %s", fpath, e)
         else:
             os.makedirs(self.download_dir, exist_ok=True)
+
+    def _fetch_html_text(self, arxiv_id: str) -> str:
+        """Fetch the arXiv HTML version of a paper and return plain text."""
+        import re as _re
+        url = f"https://arxiv.org/html/{arxiv_id}"
+        try:
+            req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
+            with urllib.request.urlopen(req, context=self.ssl_context, timeout=30) as resp:
+                raw_html = resp.read().decode("utf-8", errors="ignore")
+        except Exception as e:
+            logger.warning("HTML fallback failed for %s: %s", arxiv_id, e)
+            return ""
+
+        # Strip script/style blocks
+        raw_html = _re.sub(r"<(script|style)[^>]*>.*?</\1>", "", raw_html, flags=_re.DOTALL | _re.IGNORECASE)
+        # Strip all remaining tags
+        text = _re.sub(r"<[^>]+>", " ", raw_html)
+        # Collapse whitespace
+        text = _re.sub(r"\s{3,}", "\n\n", text)
+        text = text.strip()
+        if len(text) < 500:
+            logger.warning("HTML text too short for %s (%d chars) — likely a redirect.", arxiv_id, len(text))
+            return ""
+        logger.info("HTML fallback succeeded for %s (%d chars).", arxiv_id, len(text))
+        return text
 
     def _download_with_retry(self, url: str, filepath: str) -> bool:
         """Download a single URL to filepath with exponential-backoff retries."""
@@ -107,7 +197,13 @@ class ArxivIngestor:
         existing_meta = self._load_existing_metadata()
 
         logger.info("Searching arXiv for: %s", query)
-        client = arxiv.Client()
+        # page_size = max_results so the library only requests what we need (avoids 503s from
+        # requesting 100 results per page when arXiv is already handling the survey step queries)
+        client = arxiv.Client(
+            page_size=self.max_results,
+            delay_seconds=5,
+            num_retries=3,
+        )
         search = arxiv.Search(
             query=query,
             max_results=self.max_results,
@@ -117,7 +213,11 @@ class ArxivIngestor:
         try:
             results = list(client.results(search))
         except Exception as e:
-            logger.error("Error fetching arXiv results: %s", e)
+            logger.warning("arxiv library failed (%s) — falling back to urllib.", e)
+            results = self._fallback_search(query)
+
+        if not results:
+            logger.error("arXiv search returned 0 results for: %s", query)
             return []
 
         downloaded_papers = []
@@ -145,13 +245,25 @@ class ArxivIngestor:
                     skip_download = True
 
             if not skip_download:
-                logger.info("Downloading: %s", result.title)
+                logger.info("Downloading PDF: %s", result.title)
                 ok = self._download_with_retry(result.pdf_url, filepath)
                 if not ok:
-                    logger.warning("Failed to download: %s", result.title)
-                    continue
-                # Rate-limit between downloads to avoid IP bans
-                time.sleep(Config.DOWNLOAD_RATE_LIMIT)
+                    logger.warning("PDF failed for %s — trying HTML fallback.", result.title)
+                    html_text = self._fetch_html_text(arxiv_id)
+                    if html_text:
+                        txt_filepath = filepath.replace(".pdf", ".txt")
+                        try:
+                            with open(txt_filepath, "w", encoding="utf-8") as tf:
+                                tf.write(html_text)
+                            filepath = txt_filepath
+                            logger.info("Saved HTML fallback text: %s", txt_filepath)
+                        except Exception as e:
+                            logger.warning("Could not save HTML text: %s", e)
+                            continue
+                    else:
+                        continue
+                else:
+                    time.sleep(Config.DOWNLOAD_RATE_LIMIT)
 
             new_filepaths.add(filepath)
             paper_meta = {
@@ -160,7 +272,7 @@ class ArxivIngestor:
                 "filepath": filepath,
                 "summary": result.summary,
                 "authors": [a.name for a in result.authors],
-                "published": str(result.published),
+                "published": str(result.published)[:10],   # handles both datetime and string
                 "url": result.pdf_url,
             }
             downloaded_papers.append(paper_meta)

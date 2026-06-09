@@ -4,7 +4,7 @@ langchain-community>=0.2.0
 langchain-text-splitters>=0.2.0
 
 # Vector store
-chromadb>=0.5.0
+chromadb>=0.5.0,<1.0.0
 
 # Embeddings & reranking
 sentence-transformers>=3.0.0
@@ -32,6 +32,8 @@ requests>=2.31.0
 reportlab>=4.2.0
 latex>=1.1.0
 attrs>=23.2.0
+python-docx>=1.1.0
+openpyxl>=3.1.0
 
 # Evaluation metrics
 rouge-score>=0.1.2

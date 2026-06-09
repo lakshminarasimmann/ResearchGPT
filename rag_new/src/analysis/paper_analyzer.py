@@ -9,6 +9,7 @@ from typing import List, Dict
 import fitz
 import sys, os
 sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
+from config.config import Config
 from src.generation.generator import LLMClient
 
 logger = logging.getLogger(__name__)
@@ -121,7 +122,7 @@ def extract_fields(title: str, text: str, llm: LLMClient) -> Dict[str, str]:
         "future_scope":       "Not mentioned",
     }
 
-    input_text = text[:7000] if text else ""
+    input_text = text[:Config.SURVEY_EXTRACT_MAX_CHARS] if text else ""
     if not input_text:
         return default
 
@@ -201,7 +202,7 @@ def generate_sample_paper(topic: str, rows: List[Dict]) -> str:
 
     # Build a condensed summary of all analysed papers using all extracted fields
     context_lines = []
-    for idx, row in enumerate(rows[:10], start=1):  # use top 10 papers as context
+    for idx, row in enumerate(rows[:Config.SURVEY_PAPER_CONTEXT_ROWS], start=1):  # use top 10 papers as context
         context_lines.append(
             f"[{idx}] Paper: {row['Title']} ({row['Authors']})\n"
             f"    Journal Details: {row['Journal Details (DOI / Year / Citation)']}\n"
@@ -236,7 +237,7 @@ STRICT REQUIREMENTS:
 - Length: 4 to 5 pages (approximately 2000 to 2500 words)
 - Write in formal academic third-person style
 - Do NOT use markdown formatting, bullet points, or numbered lists inside section bodies — use continuous prose paragraphs only
-- Every factual claim must be backed by an inline citation [1]–[{len(rows[:10])}]
+- Every factual claim must be backed by an inline citation [1]–[{len(rows[:Config.SURVEY_PAPER_CONTEXT_ROWS])}]
 - Do NOT fabricate any results, statistics, or claims not present in the source papers
 - Each section must contain at least two well-developed paragraphs
 

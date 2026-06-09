@@ -33,12 +33,15 @@ class PDFProcessor:
 
     def parse_pdf(self, filepath: str) -> str:
         """
-        Extracts cleaned text from a PDF.
-        - Removes page numbers and running headers/footers.
-        - Appends a plain-text representation of tables.
+        Extracts cleaned text from a PDF or plain-text (.txt) file.
+        .txt files are HTML-fallback content saved by the ingestor.
         """
         if not os.path.exists(filepath):
             raise FileNotFoundError(f"File not found: {filepath}")
+
+        if filepath.endswith(".txt"):
+            with open(filepath, "r", encoding="utf-8", errors="ignore") as f:
+                return f.read()
 
         doc = fitz.open(filepath)
         page_texts = []

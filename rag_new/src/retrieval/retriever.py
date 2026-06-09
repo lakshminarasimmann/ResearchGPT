@@ -239,12 +239,16 @@ SUB-QUESTIONS (one per line):"""
         if strategy != "naive":
             bm25_candidates = self._bm25_search(query, window)
             if bm25_candidates:
+                # Use per-strategy alpha when caller hasn't overridden the global default
+                if alpha == Config.BM25_ALPHA:
+                    alpha = {
+                        "hyde": Config.BM25_ALPHA_HYDE,
+                        "complex": Config.BM25_ALPHA_COMPLEX,
+                    }.get(strategy, Config.BM25_ALPHA_STANDARD)
                 candidates = self._hybrid_merge(candidates, bm25_candidates, alpha)
                 logger.info(
-                    "Hybrid merge: %d vector + %d BM25 → %d unique candidates.",
-                    len(candidates),
-                    len(bm25_candidates),
-                    len(candidates),
+                    "Hybrid merge: %d vector + %d BM25 → %d unique (alpha=%.2f, strategy=%s).",
+                    len(candidates), len(bm25_candidates), len(candidates), alpha, strategy,
                 )
 
         if not rerank:
@@ -271,11 +275,19 @@ SUB-QUESTIONS (one per line):"""
             return []
         pairs = [[query, doc["text"]] for doc in candidates]
         scores = self.cross_encoder.predict(pairs)
-        for i, doc in enumerate(candidates):
-            base = float(scores[i])
+        if len(scores) != len(candidates):
+            logger.warning(
+                "Cross-encoder returned %d scores for %d candidates — truncating to shorter list.",
+                len(scores), len(candidates),
+            )
+        for i, doc in enumerate(candidates[:len(scores)]):
+            base = max(0.0, min(1.0, float(scores[i])))
             section = (doc.get("metadata", {}).get("section") or "").lower()
-            boost = 0.15 if any(kw in section for kw in self._HIGH_VALUE_SECTIONS) else 0.0
-            doc["rerank_score"] = base + boost
+            boost = 0.1 if any(kw in section for kw in self._HIGH_VALUE_SECTIONS) else 0.0
+            doc["rerank_score"] = min(1.0, base + boost)
+        # candidates beyond scores list get a score of 0
+        for doc in candidates[len(scores):]:
+            doc["rerank_score"] = 0.0
         return sorted(candidates, key=lambda x: x["rerank_score"], reverse=True)
 
 

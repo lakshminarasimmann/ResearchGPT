@@ -14,8 +14,14 @@ from src.output_pdf.latex_generator import generate_ieee_latex_pdf
 
 logger = logging.getLogger(__name__)
 
-# Approximate chars per token for token-budget estimation
-_CHARS_PER_TOKEN = 4
+# Chars-per-token ratios vary by content type.
+# Academic prose is denser than average English; code is denser still.
+_CHARS_PER_TOKEN: dict = {
+    "academic": 3.5,   # dense scientific text
+    "code":     3.0,   # identifiers and symbols are short
+    "prompt":   4.5,   # template text with lots of whitespace/boilerplate
+    "general":  4.0,   # default
+}
 
 
 class LLMClient:
@@ -26,13 +32,15 @@ class LLMClient:
     # Token helpers
     # ------------------------------------------------------------------
     @staticmethod
-    def estimate_tokens(text: str) -> int:
-        """Fast approximation: 1 token ≈ 4 characters."""
-        return max(1, len(text) // _CHARS_PER_TOKEN)
+    def estimate_tokens(text: str, content_type: str = "general") -> int:
+        """Approximate token count using content-type-aware chars/token ratio."""
+        cpt = _CHARS_PER_TOKEN.get(content_type, 4.0)
+        return max(1, int(len(text) / cpt))
 
     @staticmethod
-    def truncate_to_token_budget(text: str, max_tokens: int) -> str:
-        max_chars = max_tokens * _CHARS_PER_TOKEN
+    def truncate_to_token_budget(text: str, max_tokens: int, content_type: str = "general") -> str:
+        cpt = _CHARS_PER_TOKEN.get(content_type, 4.0)
+        max_chars = int(max_tokens * cpt)
         if len(text) <= max_chars:
             return text
         return text[:max_chars]
@@ -69,15 +77,27 @@ class LLMClient:
             raise RuntimeError(f"Ollama timeout or failure: {e}")
 
     def _generate_openai(self, prompt: str) -> str:
-        from openai import OpenAI
+        from openai import OpenAI, APIError, APITimeoutError, APIConnectionError
         api_key = Config.CEREBRAS_API_KEY or os.environ.get("CEREBRAS_API_KEY")
+        if not api_key:
+            raise RuntimeError("No API key found. Set CEREBRAS_API_KEY in your .env file.")
         client = OpenAI(api_key=api_key, base_url=Config.CEREBRAS_BASE_URL)
-        response = client.chat.completions.create(
-            model=Config.OPENAI_MODEL,
-            messages=[{"role": "user", "content": prompt}],
-            temperature=Config.LLM_TEMPERATURE,
-            max_tokens=Config.LLM_MAX_TOKENS,
-        )
+        try:
+            response = client.chat.completions.create(
+                model=Config.OPENAI_MODEL,
+                messages=[{"role": "user", "content": prompt}],
+                temperature=Config.LLM_TEMPERATURE,
+                max_tokens=Config.LLM_MAX_TOKENS,
+                timeout=120,
+            )
+        except APITimeoutError:
+            raise RuntimeError("LLM request timed out after 120s. Try again or use a shorter prompt.")
+        except APIConnectionError as e:
+            raise RuntimeError(f"Could not connect to LLM API: {e}")
+        except APIError as e:
+            raise RuntimeError(f"LLM API error (status {e.status_code}): {e.message}")
+        if not response.choices:
+            raise RuntimeError("LLM returned an empty choices list — no content was generated.")
         return response.choices[0].message.content or ""
 
     # ------------------------------------------------------------------
@@ -596,6 +616,159 @@ Context:
         )
 
     # ------------------------------------------------------------------
+    # Citation fixing (metadata-based, no LLM)
+    # ------------------------------------------------------------------
+    @staticmethod
+    def fix_citations_from_metadata(paper_text: str, context_chunks: List[Dict]) -> str:
+        """
+        Rebuild the REFERENCES section using real retrieved-paper metadata.
+        No LLM — purely deterministic. Replaces any existing REFERENCES block.
+        """
+        # Collect unique papers in retrieval order
+        seen: dict = {}
+        unique_papers: List[dict] = []
+        for chunk in context_chunks:
+            meta = chunk.get("metadata", {}) if "metadata" in chunk else chunk
+            title = (meta.get("title") or "Unknown").strip()
+            if title not in seen:
+                seen[title] = True
+                unique_papers.append(meta)
+
+        if not unique_papers:
+            return paper_text
+
+        ref_lines = ["REFERENCES", ""]
+        for i, meta in enumerate(unique_papers, 1):
+            title  = (meta.get("title") or "Unknown").strip()
+            authors = meta.get("authors", [])
+            if isinstance(authors, list) and authors:
+                if len(authors) == 1:
+                    author_str = authors[0]
+                elif len(authors) == 2:
+                    author_str = f"{authors[0]} and {authors[1]}"
+                else:
+                    author_str = f"{authors[0]}, {authors[1]}, et al."
+            else:
+                author_str = str(authors) if authors else "Unknown Author"
+
+            year      = str(meta.get("published") or "")[:4] or "n.d."
+            arxiv_id  = (meta.get("arxiv_id") or "").strip()
+
+            if arxiv_id:
+                ref = f'[{i}] {author_str}, "{title}," arXiv:{arxiv_id}, {year}.'
+            else:
+                ref = f'[{i}] {author_str}, "{title}," {year}.'
+            ref_lines.append(ref)
+
+        new_refs_text = "\n".join(ref_lines)
+
+        # Replace existing REFERENCES section or append
+        ref_pattern = re.compile(r"\bREFERENCES\b.*$", re.IGNORECASE | re.DOTALL)
+        if ref_pattern.search(paper_text):
+            return ref_pattern.sub(new_refs_text, paper_text)
+        return paper_text + "\n\n" + new_refs_text
+
+    # ------------------------------------------------------------------
+    # Comparative analysis table
+    # ------------------------------------------------------------------
+    def generate_analysis_table(self, topic: str, context_chunks: List[Dict]) -> List[Dict]:
+        """
+        For each unique paper in context_chunks, extracts structured analysis fields
+        via the LLM and returns a list of row dicts matching the survey table columns.
+        """
+        # Deduplicate chunks by paper title and concatenate their text
+        seen: dict = {}  # title → {meta, text_parts}
+        for chunk in context_chunks:
+            meta = chunk.get("metadata", {})
+            title = (meta.get("title") or "Unknown").strip()
+            if title not in seen:
+                seen[title] = {"meta": meta, "text_parts": []}
+            seen[title]["text_parts"].append((chunk.get("text") or "")[:800])
+
+        papers = list(seen.values())
+        if not papers:
+            return []
+
+        # Build a single batched prompt so we make one LLM call for all papers
+        paper_blocks = []
+        for idx, p in enumerate(papers, 1):
+            text = " ".join(p["text_parts"])[:2000]
+            title = (p["meta"].get("title") or "Unknown").strip()
+            paper_blocks.append(f'PAPER {idx}: "{title}"\n{text}')
+
+        papers_text = "\n\n---\n\n".join(paper_blocks)
+        prompt = f"""You are an academic research analyst. For each paper below, extract structured information.
+
+Return a JSON ARRAY (one object per paper) with these exact keys for each paper:
+- "problem_statement": one sentence describing the core problem addressed
+- "objective": one sentence describing the paper's main goal
+- "research_gap": one sentence describing the gap this paper fills
+- "methodology": key algorithms or techniques used (max 50 words, comma-separated)
+- "features": main features or aspects focused on (max 40 words)
+- "results": performance metric name and value (e.g. "Accuracy: 94.2%", max 50 words)
+- "limitations": main limitation mentioned (max 40 words)
+- "future_scope": suggested future work (max 40 words)
+
+Topic context: {topic}
+
+PAPERS:
+{papers_text}
+
+Return ONLY a valid JSON array. No markdown, no explanation."""
+
+        rows: List[Dict] = []
+        try:
+            raw = self.llm.generate(prompt).strip()
+            if raw.startswith("```"):
+                raw = re.sub(r"^```(?:json)?\s*", "", raw, flags=re.IGNORECASE)
+                raw = re.sub(r"\s*```$", "", raw)
+            parsed = json.loads(raw)
+            if not isinstance(parsed, list):
+                parsed = [parsed]
+        except Exception as e:
+            logger.warning("Analysis table LLM call failed: %s — using empty fields.", e)
+            parsed = []
+
+        for i, (p, data) in enumerate(zip(papers, parsed), 1):
+            meta = p["meta"]
+            authors = meta.get("authors", [])
+            authors_str = ", ".join(authors) if isinstance(authors, list) else str(authors or "N/A")
+            arxiv_id = meta.get("arxiv_id", "")
+            published = meta.get("published", "")
+            doi_str = f"arXiv:{arxiv_id}" if arxiv_id else "N/A"
+            rows.append({
+                "No.": str(i),
+                "Title": (meta.get("title") or "Unknown").strip(),
+                "Authors": authors_str or "N/A",
+                "Journal Details (DOI / Year / Citation)": f"{doi_str} | {published}" if published else doi_str,
+                "Problem Statement": (data.get("problem_statement") or "N/A").strip(),
+                "Objective": (data.get("objective") or "N/A").strip(),
+                "Research Gap": (data.get("research_gap") or "N/A").strip(),
+                "Methodology (Algorithm / Techniques)": (data.get("methodology") or "N/A").strip(),
+                "Features (Focused)": (data.get("features") or "N/A").strip(),
+                "Results & Discussion (Performance Metric / Value)": (data.get("results") or "N/A").strip(),
+                "Limitations": (data.get("limitations") or "N/A").strip(),
+                "Future Scope": (data.get("future_scope") or "N/A").strip(),
+            })
+
+        # Pad any missing rows with empty data (if LLM returned fewer items than papers)
+        for i in range(len(rows) + 1, len(papers) + 1):
+            p = papers[i - 1]
+            meta = p["meta"]
+            rows.append({
+                "No.": str(i),
+                "Title": (meta.get("title") or "Unknown").strip(),
+                "Authors": "N/A",
+                "Journal Details (DOI / Year / Citation)": "N/A",
+                "Problem Statement": "N/A", "Objective": "N/A", "Research Gap": "N/A",
+                "Methodology (Algorithm / Techniques)": "N/A", "Features (Focused)": "N/A",
+                "Results & Discussion (Performance Metric / Value)": "N/A",
+                "Limitations": "N/A", "Future Scope": "N/A",
+            })
+
+        return rows
+
+    # ------------------------------------------------------------------
     # Post-generation refinement
     # ------------------------------------------------------------------
     def refine_paper(
@@ -656,16 +829,22 @@ Return only the complete revised paper text."""
             contexts = self.refine_contexts(query, context_chunks)
             logger.info("Context refined: %d → %d chunks.", len(context_chunks), len(contexts))
 
-        max_chunks = 6 if fast_generation else 9
-        max_chars = 1800 if fast_generation else Config.MAX_CONTEXT_TOKENS
+        max_chunks = Config.MAX_CHUNKS_FAST if fast_generation else Config.MAX_CHUNKS_FULL
+        max_chars = Config.MAX_CHARS_FAST if fast_generation else Config.MAX_CONTEXT_TOKENS
         contexts = self._compact_context(contexts, max_chunks=max_chunks, max_chars_per_chunk=max_chars)
 
         # Check token budget
         prompt = self.assemble_prompt(query, contexts, user_preferences=user_preferences)
-        token_est = LLMClient.estimate_tokens(prompt)
+        token_est = LLMClient.estimate_tokens(prompt, content_type="prompt")
         logger.info("Prompt token estimate: ~%d tokens.", token_est)
 
         paper_text = self.llm.generate(prompt)
+
+        if not paper_text or len(paper_text.split()) < 50:
+            raise RuntimeError(
+                "LLM returned an empty or near-empty response. "
+                "Check your API key, model availability, and prompt length."
+            )
 
         # Strip any markdown the model may have inserted despite instructions
         paper_text = self.strip_markdown(paper_text)
@@ -690,8 +869,8 @@ Return only the complete revised paper text."""
         Streaming variant of generate_review.
         Yields text tokens as they arrive from the model.
         """
-        max_chunks = 6 if fast_generation else 9
-        max_chars = 1800 if fast_generation else Config.MAX_CONTEXT_TOKENS
+        max_chunks = Config.MAX_CHUNKS_FAST if fast_generation else Config.MAX_CHUNKS_FULL
+        max_chars = Config.MAX_CHARS_FAST if fast_generation else Config.MAX_CONTEXT_TOKENS
         contexts = self._compact_context(context_chunks, max_chunks=max_chunks, max_chars_per_chunk=max_chars)
         prompt = self.assemble_prompt(query, contexts, user_preferences=user_preferences)
         yield from self.llm.stream(prompt)

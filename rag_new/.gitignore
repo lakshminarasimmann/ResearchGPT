@@ -6,3 +6,4 @@ models/
 data/vector_db/
 data/papers/
 output/
+logs/

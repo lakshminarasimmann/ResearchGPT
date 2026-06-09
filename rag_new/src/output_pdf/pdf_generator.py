@@ -73,10 +73,22 @@ def generate_ieee_pdf(
 
     tex_path.write_text(tex_content, encoding="utf-8")
 
-    subprocess.run(
-        ["pdflatex", "-output-directory", output_dir, tex_path.name],
-        check=True
-    )
+    try:
+        subprocess.run(
+            ["pdflatex", "-output-directory", output_dir, tex_path.name],
+            check=True,
+            capture_output=True,
+        )
+    except FileNotFoundError:
+        raise RuntimeError(
+            "pdflatex not found. Install TeX Live or MiKTeX and ensure pdflatex is on PATH."
+        )
+    except subprocess.CalledProcessError as e:
+        log = (e.stdout or b"").decode(errors="replace")[-2000:]
+        raise RuntimeError(f"pdflatex compilation failed:\n{log}")
+
+    if not pdf_path.exists():
+        raise RuntimeError(f"pdflatex ran but no PDF was produced at {pdf_path}")
 
     return pdf_path
 

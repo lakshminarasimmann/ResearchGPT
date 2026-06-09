@@ -1,4 +1,5 @@
 import glob
+import hashlib
 import logging
 import os
 import re
@@ -14,6 +15,27 @@ from src.evaluation.evaluator import Evaluator
 from src.generation.generator import LLMClient
 
 logger = logging.getLogger(__name__)
+
+# ── Process-level result cache ────────────────────────────────────────────────
+# Survives page refreshes; cleared when the server restarts.
+_pipeline_cache: dict = {}
+_CACHE_TTL = 3600  # seconds
+
+
+def _cache_key(topic: str, strategy: str, fast_mode: bool) -> str:
+    raw = f"{topic.lower().strip()}|{strategy}|{fast_mode}"
+    return hashlib.md5(raw.encode()).hexdigest()
+
+
+def _get_cached(key: str) -> dict | None:
+    entry = _pipeline_cache.get(key)
+    if entry and (time.time() - entry["_cached_at"]) < _CACHE_TTL:
+        return entry
+    return None
+
+
+def _store_cached(key: str, result: dict) -> None:
+    _pipeline_cache[key] = {**result, "_cached_at": time.time()}
 
 
 def _slugify_topic(topic: str) -> str:
@@ -37,6 +59,8 @@ def run_rag_for_ui_pipeline(
     fast_5page_mode: bool = False,
     min_pages: int = 5,
     user_preferences: str = "",
+    progress_callback=None,
+    retrieval_top_k: int = None,
 ) -> dict:
     """
     UI-safe RAG pipeline.  Returns structured output; never calls print() or input().
@@ -44,9 +68,26 @@ def run_rag_for_ui_pipeline(
     start_time = time.perf_counter()
     timings: dict = {}
 
+    # ── Cache check ───────────────────────────────────────────────────────────
+    ck = _cache_key(topic, retrieval_strategy, fast_mode)
+    if not force_refresh_sources and not include_evaluation:
+        cached = _get_cached(ck)
+        if cached:
+            logger.info("Cache hit for topic '%s' strategy '%s'.", topic, retrieval_strategy)
+            return {k: v for k, v in cached.items() if k != "_cached_at"}
+
+    def _cb(step: str, detail: str = "") -> None:
+        if progress_callback:
+            try:
+                progress_callback(step, detail)
+            except Exception:
+                pass
+
     topic_slug = _slugify_topic(topic)
     topic_papers_dir = os.path.join(Config.PAPERS_DIR, topic_slug)
-    collection_name = f"{Config.COLLECTION_NAME}_{topic_slug}"
+    # Append a short hash of the raw topic so near-identical slugs never share a collection
+    _topic_hash = hashlib.md5(topic.lower().strip().encode()).hexdigest()[:6]
+    collection_name = f"{Config.COLLECTION_NAME}_{topic_slug}_{_topic_hash}"
 
     def _error_result(message: str, status: str, paper_count: int = 0) -> dict:
         timings["total_seconds"] = round(time.perf_counter() - start_time, 2)
@@ -71,6 +112,7 @@ def run_rag_for_ui_pipeline(
             "tex_path": None,
             "page_estimate": 0.0,
             "min_pages_target": min_pages,
+            "analysis_table": [],
         }
 
     # ------------------------------------------------------------------ 1. Index
@@ -92,24 +134,35 @@ def run_rag_for_ui_pipeline(
         ve = VectorEngine(collection_name=collection_name)
         current_count = 0
 
-    needs_reindex = force_refresh_sources or current_count == 0
+    # Only wipe + re-download when explicitly requested AND the topic folder is new or user forced it.
+    # Avoids nuking a full index on every run when refresh_sources is left checked by default.
+    existing_pdfs = glob.glob(os.path.join(topic_papers_dir, "*.pdf")) + \
+                    glob.glob(os.path.join(topic_papers_dir, "*.txt"))
+    needs_reindex = current_count == 0 or (force_refresh_sources and not existing_pdfs) or \
+                    (force_refresh_sources and current_count == 0)
+    needs_download = force_refresh_sources or not existing_pdfs
 
-    if needs_reindex:
+    if needs_download:
+        _cb("fetch_start", f"Searching arXiv for **{topic}**…")
         ingestor = ArxivIngestor(
-            max_results=2 if fast_mode else 3,
+            max_results=5 if fast_mode else 8,
             download_dir=topic_papers_dir,
         )
+        # Only clear existing PDFs when user explicitly requests a fresh pull
         downloaded = ingestor.search_and_download(topic, clear_existing=force_refresh_sources)
         logger.info("Downloaded/found %d papers for topic '%s'.", len(downloaded), topic)
+        _cb("fetch_done", f"Fetched {len(downloaded)} paper(s) from arXiv")
 
-        pdf_files = glob.glob(os.path.join(topic_papers_dir, "*.pdf"))
+    pdf_files = glob.glob(os.path.join(topic_papers_dir, "*.pdf")) + \
+                glob.glob(os.path.join(topic_papers_dir, "*.txt"))
 
-        # Build a set of paper IDs already in the vector store to enable incremental indexing
+    if needs_reindex or needs_download:
+        # Build a set of paper IDs already in the vector store for incremental indexing
         existing_chunk_ids: set = set()
         if ve.count() > 0 and not force_refresh_sources:
             all_existing = ve.get_all_chunks()
             existing_chunk_ids = {c["metadata"].get("filepath", "") for c in all_existing}
-        elif force_refresh_sources:
+        elif force_refresh_sources and current_count == 0:
             ve.reset_collection()
 
         # Load rich metadata (authors, published dates) from the saved metadata JSON
@@ -125,11 +178,13 @@ def run_rag_for_ui_pipeline(
             except Exception as e:
                 logger.warning("Could not load rich metadata: %s", e)
 
+        _cb("index_start", f"Building vector index for {len(pdf_files)} paper(s)…")
         for filepath in pdf_files:
             if filepath in existing_chunk_ids:
                 logger.info("Skipping already-indexed file: %s", os.path.basename(filepath))
                 continue
             try:
+                _cb("index_file", f"Indexing: {os.path.basename(filepath)}")
                 text = processor.parse_pdf(filepath)
                 base_meta = rich_meta_by_path.get(filepath, {})
                 metadata = {
@@ -144,18 +199,19 @@ def run_rag_for_ui_pipeline(
             except Exception as e:
                 logger.error("Error processing %s: %s", filepath, e)
     else:
-        pdf_files = glob.glob(os.path.join(topic_papers_dir, "*.pdf"))
         logger.info("Reusing existing index (%d chunks) for topic '%s'.", ve.count(), topic)
 
+    _cb("index_done", f"Index ready ({ve.count()} chunks)")
     timings["index_seconds"] = round(time.perf_counter() - start_time, 2)
 
     if not pdf_files:
         return _error_result(
-            "No source papers were found. Try enabling source refresh or rephrasing your query.",
+            "No papers could be downloaded from arXiv (PDF and HTML both failed). Try more specific technical keywords, or retry.",
             status="no_sources",
         )
 
     # ------------------------------------------------------------------ 2. Retrieve
+    _cb("retrieve_start", "Retrieving relevant chunks with hybrid search…")
     retrieval_start = time.perf_counter()
     retriever = HybridRetriever(ve)
 
@@ -165,13 +221,14 @@ def run_rag_for_ui_pipeline(
     except Exception as e:
         logger.warning("BM25 fitting failed: %s", e)
 
-    retrieval_top_k = 6 if fast_mode else 9
+    retrieval_top_k = retrieval_top_k if retrieval_top_k else (6 if fast_mode else 9)
     context = retriever.retrieve(
         topic,
         top_k=retrieval_top_k,
         strategy=retrieval_strategy,
         rerank=True,
     )
+    _cb("retrieve_done", f"Retrieved {len(context)} chunk(s) — reranked with cross-encoder")
     timings["retrieval_seconds"] = round(time.perf_counter() - retrieval_start, 2)
 
     if not context:
@@ -182,6 +239,7 @@ def run_rag_for_ui_pipeline(
         )
 
     # ------------------------------------------------------------------ 3. Generate
+    _cb("generate_start", "Generating paper with LLM — this takes 1–3 minutes…")
     generation_start = time.perf_counter()
     rag = RAGGenerator()
 
@@ -195,8 +253,18 @@ def run_rag_for_ui_pipeline(
     )
     timings["generation_seconds"] = round(time.perf_counter() - generation_start, 2)
     paper_text = review["paper_text"]
+    _cb("generate_done", f"Paper generated ({len(paper_text.split())} words)")
+
+    # ── Analysis table (best-effort — failures don't block the paper) ─────────
+    _cb("analysis_start", "Building comparative analysis table…")
+    analysis_table: list = []
+    try:
+        analysis_table = rag.generate_analysis_table(topic, context)
+    except Exception as e:
+        logger.warning("Analysis table generation failed (non-fatal): %s", e)
 
     # ------------------------------------------------------------------ 4. Plagiarism check & rewrite
+    _cb("postprocess_start", "Post-processing: originality rewrite…")
     rewrite_passes = 0
     plagiarism_report = None
     if run_plagiarism_check:
@@ -205,21 +273,35 @@ def run_rag_for_ui_pipeline(
     if apply_ai_rewrite:
         safe_passes = max(1, min(int(max_rewrite_passes), 3))
         for _ in range(safe_passes):
+            current_similarity = (plagiarism_report or {}).get("overall_similarity_pct", 0.0)
             should_rewrite = (
                 not run_plagiarism_check
                 or not plagiarism_report
-                or plagiarism_report.get("overall_similarity_pct", 0.0) > target_similarity_pct
+                or current_similarity > target_similarity_pct
             )
             if not should_rewrite:
                 break
             rewritten = rag.rewrite_for_originality(
                 topic, paper_text, context, target_similarity_pct=target_similarity_pct
             )
-            if rewritten and rewritten.strip():
+            if not rewritten or not rewritten.strip():
+                break
+            if run_plagiarism_check:
+                new_report = Evaluator.evaluate_plagiarism_risk(rewritten.strip(), context)
+                new_similarity = new_report.get("overall_similarity_pct", 0.0)
+                if new_similarity < current_similarity:
+                    paper_text = rewritten.strip()
+                    plagiarism_report = new_report
+                    rewrite_passes += 1
+                else:
+                    logger.info(
+                        "Rewrite did not improve similarity (%.1f%% → %.1f%%) — discarding.",
+                        current_similarity, new_similarity,
+                    )
+                    break
+            else:
                 paper_text = rewritten.strip()
                 rewrite_passes += 1
-            if run_plagiarism_check:
-                plagiarism_report = Evaluator.evaluate_plagiarism_risk(paper_text, context)
 
     # ------------------------------------------------------------------ 5. Humanize writing
     humanize_applied = False
@@ -243,6 +325,7 @@ def run_rag_for_ui_pipeline(
             plagiarism_report = Evaluator.evaluate_plagiarism_risk(paper_text, context)
 
     # ------------------------------------------------------------------ 7. PDF generation
+    _cb("pdf_start", "Generating IEEE PDF…")
     latex_compile_log = None
     tex_path = None
     pdf_path = None
@@ -263,10 +346,11 @@ def run_rag_for_ui_pipeline(
     rouge_l_result = None
 
     eval_start = time.perf_counter()
+    evaluation_error = None
     if include_evaluation:
         llm = LLMClient()
-        eval_context = context[:3] if fast_mode else context
-        eval_text = paper_text[:7000] if fast_mode else paper_text
+        eval_context = context[:Config.EVAL_MAX_CONTEXT_CHUNKS] if fast_mode else context
+        eval_text = paper_text[:Config.EVAL_MAX_CHARS] if fast_mode else paper_text
         try:
             faith_result = Evaluator.evaluate_faithfulness(topic, eval_text, eval_context, llm)
             rel_result = Evaluator.evaluate_relevance(topic, eval_text, llm)
@@ -276,12 +360,14 @@ def run_rag_for_ui_pipeline(
             relevance_reasoning = rel_result.get("reasoning")
         except Exception as e:
             logger.warning("LLM-based evaluation failed: %s", e)
+            evaluation_error = str(e)
 
         # Always run ROUGE-L (no LLM needed)
         rouge_l_result = Evaluator.evaluate_rouge_l(paper_text, context)
 
     timings["evaluation_seconds"] = round(time.perf_counter() - eval_start, 2)
     timings["total_seconds"] = round(time.perf_counter() - start_time, 2)
+    _cb("done", f"Complete in {timings['total_seconds']}s")
 
     # Prune stale collections now that we're done with the active one
     try:
@@ -289,7 +375,7 @@ def run_rag_for_ui_pipeline(
     except Exception as e:
         logger.warning("Collection pruning failed (non-fatal): %s", e)
 
-    # ------------------------------------------------------------------ 9. Build result
+    # ------------------------------------------------------------------ 9. Build result  (cache before return)
     retrieved_context = []
     for item in context:
         meta = item.get("metadata", {})
@@ -306,7 +392,7 @@ def run_rag_for_ui_pipeline(
             }
         )
 
-    return {
+    result = {
         "paper_text": paper_text,
         "pdf_path": pdf_path,
         "num_papers": len(pdf_files),
@@ -315,6 +401,7 @@ def run_rag_for_ui_pipeline(
         "relevance": relevance_score,
         "faithfulness_reasoning": faithfulness_reasoning,
         "relevance_reasoning": relevance_reasoning,
+        "evaluation_error": evaluation_error,
         "retrieved_context": retrieved_context,
         "plagiarism_report": plagiarism_report,
         "rouge_l": rouge_l_result,
@@ -327,7 +414,11 @@ def run_rag_for_ui_pipeline(
         "tex_path": tex_path,
         "page_estimate": rag.estimate_page_count(paper_text),
         "min_pages_target": max(1, int(min_pages)) if fast_5page_mode else None,
+        "analysis_table": analysis_table,
     }
+    if not include_evaluation and result.get("status") == "ok":
+        _store_cached(ck, result)
+    return result
 
 
 def refine_paper_with_instruction(

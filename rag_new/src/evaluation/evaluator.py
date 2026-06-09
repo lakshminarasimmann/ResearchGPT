@@ -103,61 +103,76 @@ class Evaluator:
     # ------------------------------------------------------------------
     @staticmethod
     def evaluate_faithfulness(query: str, response: str, context: List[Dict], llm_client) -> Dict:
-        context_text = "\n".join([c["text"] for c in context])
+        # Truncate to avoid overwhelming the LLM context window
+        context_text = "\n".join([c["text"] for c in context])[:3000]
+        response_snippet = response[:2500]
         prompt = f"""You are an impartial judge evaluating a RAG system.
 Task: Evaluate the Faithfulness of the ANSWER to the provided CONTEXT.
 
-CONTEXT:
+CONTEXT (excerpt):
 {context_text}
 
-ANSWER:
-{response}
+ANSWER (excerpt):
+{response_snippet}
 
 INSTRUCTIONS:
 1. Read the Context and the Answer.
 2. Identify any claims in the Answer that contradict or are unsupported by the Context.
-3. Think step by step.
-4. Output a score from 1 to 5, where:
+3. Output a score from 1 to 5:
    - 1: Entirely hallucinated or contradicts context.
    - 3: Mostly supported but has minor unverified details.
    - 5: Fully supported by context.
 
-OUTPUT FORMAT:
-Reasoning: [Your step-by-step reasoning]
-Score: [1-5]"""
+Reasoning: [one paragraph]
+Score: [single digit 1-5]"""
         eval_output = llm_client.generate(prompt).strip()
         return Evaluator._parse_geval_output(eval_output)
 
     @staticmethod
     def evaluate_relevance(query: str, response: str, llm_client) -> Dict:
+        response_snippet = response[:2500]
         prompt = f"""You are an impartial judge evaluating a RAG system.
 Task: Evaluate the Relevance of the ANSWER to the QUERY.
 
 QUERY:
 {query}
 
-ANSWER:
-{response}
+ANSWER (excerpt):
+{response_snippet}
 
 INSTRUCTIONS:
-1. Analyze the user Query intent.
-2. Determine if the Answer directly addresses the intent.
-3. Think step by step.
-4. Output a score from 1 to 5, where:
+1. Does the Answer directly address the Query topic?
+2. Output a score from 1 to 5:
    - 1: Completely irrelevant or off-topic.
    - 3: Partially relevant but misses key aspects.
    - 5: Highly relevant and comprehensive.
 
-OUTPUT FORMAT:
-Reasoning: [Your step-by-step reasoning]
-Score: [1-5]"""
+Reasoning: [one paragraph]
+Score: [single digit 1-5]"""
         eval_output = llm_client.generate(prompt).strip()
         return Evaluator._parse_geval_output(eval_output)
 
     @staticmethod
     def _parse_geval_output(text: str) -> Dict:
-        score_match = re.search(r"Score:\s*(\d+)", text)
-        score = int(score_match.group(1)) if score_match else 0
+        # Try progressively looser patterns
+        patterns = [
+            r"Score:\s*\**(\d)\**",          # Score: 3  or  Score: **3**
+            r"\bscore[:\s]+\**(\d)\**",       # case-insensitive score:3
+            r"\*\*Score\*\*[:\s]+(\d)",       # **Score**: 3
+            r"(\d)\s*/\s*5",                  # 3/5
+            r"\b([1-5])\b(?![\d])",           # lone digit 1-5 anywhere
+        ]
+        score = None
+        for pat in patterns:
+            m = re.search(pat, text, re.IGNORECASE)
+            if m:
+                val = int(m.group(1))
+                if 1 <= val <= 5:
+                    score = val
+                    break
+        if score is None:
+            logger.warning("Could not parse G-Eval score from: %s", text[:200])
+            score = None  # let the UI show — instead of 0
         return {"reasoning": text, "score": score}
 
     # ------------------------------------------------------------------

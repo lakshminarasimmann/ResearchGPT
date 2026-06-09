@@ -1,4 +1,5 @@
 import chromadb
+import json
 import logging
 import os
 import sys
@@ -9,6 +10,20 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(
 from config.config import Config
 
 logger = logging.getLogger(__name__)
+
+
+def _deserialize_metadata(meta: dict) -> dict:
+    """Recover list fields that were stored as JSON strings."""
+    out = {}
+    for k, v in meta.items():
+        if isinstance(v, str) and v.startswith("["):
+            try:
+                out[k] = json.loads(v)
+                continue
+            except (json.JSONDecodeError, ValueError):
+                pass
+        out[k] = v
+    return out
 
 
 class VectorEngine:
@@ -43,13 +58,13 @@ class VectorEngine:
             return
         ids = [chunk["id"] for chunk in chunks]
         documents = [chunk["text"] for chunk in chunks]
-        # ChromaDB metadata values must be str/int/float/bool — stringify lists
+        # ChromaDB metadata values must be str/int/float/bool — serialize lists as JSON
         metadatas = []
         for chunk in chunks:
             meta = {}
             for k, v in chunk["metadata"].items():
                 if isinstance(v, list):
-                    meta[k] = ", ".join(str(x) for x in v)
+                    meta[k] = json.dumps(v)
                 elif v is None:
                     meta[k] = ""
                 else:
@@ -79,7 +94,7 @@ class VectorEngine:
         result = self.collection.get(include=["documents", "metadatas"])
         chunks = []
         for doc, meta in zip(result["documents"], result["metadatas"]):
-            chunks.append({"text": doc, "metadata": meta or {}})
+            chunks.append({"text": doc, "metadata": _deserialize_metadata(meta or {})})
         return chunks
 
     # ------------------------------------------------------------------
