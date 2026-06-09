@@ -5,5 +5,7 @@ __pycache__/
 models/
 data/vector_db/
 data/papers/
+data/history/
+chroma.sqlite3
 output/
 logs/
