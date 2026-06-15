@@ -14,6 +14,8 @@ from src.analysis.paper_analyzer import analyze_topic, generate_sample_paper
 from src.output_pdf.survey_pdf_generator import generate_survey_combined_pdf
 from src.output_pdf.docx_generator import generate_paper_docx, generate_survey_docx
 from src.generation.generator import RAGGenerator as _RAGGenerator
+from src.evaluation.evaluator import Evaluator as _Evaluator
+from src.generation.llm_client import LLMClient as _LLMClient
 from src.history.paper_history import save_result as _history_save, save_session as _history_save_session, list_history, load_result as _history_load, delete_result as _history_delete
 
 st.set_page_config(page_title="ResearchGPT", page_icon="📄", layout="wide", initial_sidebar_state="expanded")
@@ -1360,6 +1362,26 @@ def render_paper_tabs(result: dict, uid: str, topic: str = ""):
                     '</div>',
                     unsafe_allow_html=True,
                 )
+                st.write("")
+                if paper_text and st.button("▶ Run Evaluation Now", key=f"run_eval_now_{uid}", type="primary"):
+                    with st.spinner("Running G-Eval scoring…"):
+                        try:
+                            _llm = _LLMClient()
+                            _eval_ctx = result.get("retrieved_context", [])[:3]
+                            _faith = _Evaluator.evaluate_faithfulness(active["topic"], paper_text[:7000], _eval_ctx, _llm)
+                            _rel   = _Evaluator.evaluate_relevance(active["topic"], paper_text[:7000], _llm)
+                            _prev  = active["result"] or {}
+                            set_chat("result", {
+                                **_prev,
+                                "faithfulness":           _faith.get("score"),
+                                "relevance":              _rel.get("score"),
+                                "faithfulness_reasoning": _faith.get("reasoning", ""),
+                                "relevance_reasoning":    _rel.get("reasoning", ""),
+                            })
+                            st.toast("Evaluation complete!", icon="✅")
+                            st.rerun()
+                        except Exception as _eval_err:
+                            st.error(f"Evaluation failed: {_eval_err}")
             else:
                 _sc1, _sc2 = st.columns(2)
                 with _sc1:
