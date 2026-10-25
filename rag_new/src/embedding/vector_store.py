@@ -11,6 +11,19 @@ from config.config import Config
 
 logger = logging.getLogger(__name__)
 
+# Loading SentenceTransformerEmbeddingFunction re-downloads/reloads the model
+# (including HF Hub network round-trips) every time it's constructed. Since the
+# model is the same for every collection, build it once per process and reuse it.
+_embedding_fn_cache: dict = {}
+
+
+def _get_embedding_fn(model_name: str):
+    if model_name not in _embedding_fn_cache:
+        _embedding_fn_cache[model_name] = embedding_functions.SentenceTransformerEmbeddingFunction(
+            model_name=model_name
+        )
+    return _embedding_fn_cache[model_name]
+
 
 def _deserialize_metadata(meta: dict) -> dict:
     """Recover list fields that were stored as JSON strings."""
@@ -29,9 +42,7 @@ def _deserialize_metadata(meta: dict) -> dict:
 class VectorEngine:
     def __init__(self, collection_name=Config.COLLECTION_NAME):
         self.client = chromadb.PersistentClient(path=Config.DB_DIR)
-        self.embedding_fn = embedding_functions.SentenceTransformerEmbeddingFunction(
-            model_name=Config.EMBEDDING_MODEL_NAME
-        )
+        self.embedding_fn = _get_embedding_fn(Config.EMBEDDING_MODEL_NAME)
         self.collection = self.client.get_or_create_collection(
             name=collection_name,
             embedding_function=self.embedding_fn,
@@ -78,7 +89,12 @@ class VectorEngine:
     # Read
     # ------------------------------------------------------------------
     def query(self, query_text: str, n_results=Config.TOP_K):
-        return self.collection.query(query_texts=[query_text], n_results=n_results)
+        results = self.collection.query(query_texts=[query_text], n_results=n_results)
+        if results.get("metadatas"):
+            results["metadatas"] = [
+                [_deserialize_metadata(meta or {}) for meta in metas] for metas in results["metadatas"]
+            ]
+        return results
 
     def count(self) -> int:
         return self.collection.count()

@@ -41,5 +41,9 @@ rouge-score>=0.1.2
 # UI
 streamlit>=1.35.0
 
+# API (React frontend)
+fastapi>=0.111.0
+uvicorn[standard]>=0.30.0
+
 # Progress bars
 tqdm>=4.66.0

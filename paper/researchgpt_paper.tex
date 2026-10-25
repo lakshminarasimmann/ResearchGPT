@@ -1,0 +1,1002 @@
+\documentclass[12pt, a4paper]{article}
+
+% ── Packages ──────────────────────────────────────────────────────────────────
+\usepackage[T1]{fontenc}
+\usepackage[utf8]{inputenc}
+\usepackage{times}
+\usepackage[top=1in, bottom=1in, left=1.1in, right=1.1in]{geometry}
+\usepackage{fancyhdr}
+\usepackage{amsmath}
+\usepackage{graphicx}
+\usepackage{booktabs}
+\usepackage{array}
+\usepackage{url}
+\usepackage[hidelinks]{hyperref}
+\usepackage{setspace}
+\usepackage{titlesec}
+\usepackage{parskip}
+\usepackage{caption}
+\usepackage{microtype}
+\usepackage{enumitem}
+\usepackage{tabularx}
+\usepackage{multirow}
+
+% ── Header / Footer ───────────────────────────────────────────────────────────
+\pagestyle{fancy}
+\fancyhf{}
+\lhead{\small\textit{Dr. Karpagam M et al.}}
+\rhead{\small\textit{ResearchGPT}}
+\renewcommand{\headrulewidth}{0.4pt}
+\cfoot{\thepage}
+\setlength{\headheight}{14pt}
+
+% ── Section formatting ────────────────────────────────────────────────────────
+\titleformat{\section}{\large\bfseries}{\thesection.}{0.5em}{}
+\titleformat{\subsection}{\normalsize\bfseries}{\thesubsection}{0.5em}{}
+\titlespacing*{\section}{0pt}{2ex plus 0.5ex minus 0.2ex}{1ex}
+\titlespacing*{\subsection}{0pt}{1.5ex plus 0.3ex minus 0.1ex}{0.6ex}
+
+% ── Line spacing ──────────────────────────────────────────────────────────────
+\setstretch{1.15}
+
+% ── URL font ──────────────────────────────────────────────────────────────────
+\urlstyle{tt}
+
+% ══════════════════════════════════════════════════════════════════════════════
+\begin{document}
+
+% ── Title block ───────────────────────────────────────────────────────────────
+\begin{center}
+
+  {\Huge\bfseries ResearchGPT: An AI-Powered IEEE\\[0.4em]
+   Research Paper Generation System\\[0.4em]
+   Using Retrieval-Augmented Generation}
+
+  \vspace{1.6em}
+
+  {\large
+    Vishal Raghav V$^{1}$,\quad
+    Lakshmi Narasimman S$^{2}$,\quad
+    Dr.\ Karpagam M$^{3}$}
+
+  \vspace{1em}
+
+  {\small
+    $^{1}$Dept.\ of Computing Technologies, SRMIST, Kattankulathur, India\\
+    \texttt{vv0636@srmist.edu.in}}
+
+  \vspace{0.5em}
+
+  {\small
+    $^{2}$Dept.\ of Computational Intelligence, SRMIST, Kattankulathur, India\\
+    \texttt{ls6726@srmist.edu.in}}
+
+  \vspace{0.5em}
+
+  {\small
+    $^{3}$Dept.\ of Computational Intelligence, SRMIST, Kattankulathur, India\\
+    \texttt{karpagam1@srmist.edu.in}}
+
+\end{center}
+
+\vspace{1em}
+\noindent\rule{\linewidth}{0.5pt}
+\vspace{0.3em}
+
+% ── Abstract ──────────────────────────────────────────────────────────────────
+\begin{center}
+  \begin{minipage}{0.88\textwidth}
+    \begin{center}{\normalsize\bfseries Abstract}\end{center}
+    \vspace{0.4em}
+    \small
+    The rapid growth of academic literature has created an increasing demand
+    for automated tools that can assist researchers in synthesizing and presenting
+    knowledge in structured formats. This paper presents ResearchGPT, an end-to-end
+    intelligent system that generates IEEE-style research papers from a user-specified
+    topic using Retrieval-Augmented Generation (RAG). The system integrates a
+    multi-strategy retrieval pipeline combining dense vector search, BM25 sparse
+    retrieval, Hypothetical Document Embedding (HyDE), and cross-encoder reranking
+    to retrieve high-quality academic context from a curated corpus of arXiv papers.
+    A large language model (LLM) hosted on the Cerebras inference platform then
+    synthesizes the retrieved context into a structured, multi-section IEEE paper.
+    In addition to paper generation, the system provides an automated literature
+    survey module that fetches up to fifteen arXiv papers, extracts eight structured
+    fields per paper using LLM-based analysis, and presents the results in a
+    twelve-column comparative table alongside a generated IEEE-style survey PDF.
+    The system further supports post-generation refinement, enabling users to
+    iteratively edit specific sections. An evaluation framework based on G-Eval
+    assesses faithfulness and relevance of each generated paper. Experimental results
+    demonstrate that the HyDE retrieval strategy consistently achieves high relevance
+    scores (4--5/5), while faithfulness varies primarily with the quality and
+    breadth of available arXiv source coverage. A Streamlit-based user interface
+    with multi-session chat management, unified session history, and export options
+    provides an accessible front-end for researchers. The complete system, including
+    ingestion, retrieval, generation, evaluation, literature survey, and export
+    modules, is described in detail.
+  \end{minipage}
+\end{center}
+
+\vspace{0.8em}
+\noindent\textbf{Keywords:} Retrieval-Augmented Generation, Large Language Models,
+IEEE Paper Generation, Academic Writing Assistance, Information Retrieval,
+Literature Survey Automation, HyDE, Cross-Encoder Reranking
+\vspace{0.3em}
+
+\noindent\rule{\linewidth}{0.5pt}
+
+\vspace{1em}
+
+% ══════════════════════════════════════════════════════════════════════════════
+\section{Introduction}
+
+The volume of academic publications has grown exponentially over the past decade,
+making it increasingly difficult for researchers to stay current with developments
+in their respective fields. According to estimates from arXiv.org \cite{arxiv2024},
+the repository alone receives over two million new submissions annually, spanning
+physics, mathematics, computer science, and related disciplines. Simultaneously,
+the task of writing structured research papers demands significant time and expertise
+in academic conventions, citation practices, and domain-specific knowledge synthesis.
+Automated tools for research assistance have therefore become a focus of considerable
+interest in the natural language processing community.
+
+Large language models (LLMs) \cite{brown2020} have demonstrated remarkable
+capability in generating coherent, contextually appropriate text across diverse
+domains. However, their tendency to hallucinate factual information \cite{ouyang2022}
+makes them unreliable when used in isolation for academic writing tasks.
+Retrieval-Augmented Generation (RAG) \cite{lewis2020} addresses this limitation
+by grounding generation in retrieved documents, reducing hallucination and
+improving factual accuracy. Despite the promise of RAG-based approaches, existing
+systems have largely focused on question answering or short-form generation rather
+than the production of complete, structured academic papers with multiple sections,
+inline citations, and evaluation scores.
+
+Beyond paper generation, researchers also require systematic tools for conducting
+literature surveys. Traditional literature reviews are labour-intensive processes
+that involve searching multiple databases, reading full papers, extracting relevant
+information, and synthesizing findings across dozens of sources. Automated extraction
+of structured fields from academic papers using LLMs represents a significant
+opportunity to accelerate this process, providing researchers with a structured
+comparative view of the literature before undertaking original writing.
+
+This paper introduces ResearchGPT, a system that addresses both of these needs
+through a unified pipeline. ResearchGPT combines a multi-strategy RAG pipeline
+with a state-of-the-art LLM to generate complete, structured IEEE research papers
+from a user-provided topic. Uniquely, it also provides an automated literature
+survey module that fetches real arXiv papers, extracts structured metadata fields
+using LLM-based analysis, and renders the results in a twelve-column table and
+a generated survey PDF. Unlike prior work that focuses on summarization or question
+answering, ResearchGPT produces fully formatted multi-section papers complete with
+abstract, introduction, methodology, results, conclusion, and references.
+
+The primary contributions of this work are: (1) a complete end-to-end pipeline
+for IEEE paper generation using RAG; (2) an automated literature survey module
+that extracts eight structured fields per paper from live arXiv sources; (3) a
+multi-strategy retrieval module supporting standard hybrid retrieval, HyDE
+\cite{gao2022}, and complex multi-step retrieval with automatic strategy selection;
+(4) a G-Eval-based \cite{liu2023} evaluation framework for assessing faithfulness
+and relevance; (5) a post-generation refinement mechanism for iterative editing;
+(6) a multi-format export module supporting LaTeX/PDF, DOCX, and BibTeX output;
+and (7) a multi-session Streamlit interface supporting concurrent paper generation
+workflows with unified session history.
+
+The remainder of this paper is organized as follows. Section~2 reviews related
+work. Section~3 describes the overall system architecture. Section~4 details the
+literature survey module. Sections~5 through 9 describe the RAG pipeline modules.
+Section~10 describes the export and output module. Section~11 presents the user
+interface. Section~12 presents experimental results. Section~13 describes
+post-generation refinement. Section~14 discusses findings and limitations.
+Section~15 concludes.
+
+% ══════════════════════════════════════════════════════════════════════════════
+\section{Related Work}
+
+\subsection{Large Language Models for Text Generation}
+
+The emergence of transformer-based language models \cite{devlin2019} has
+fundamentally changed how natural language generation tasks are approached.
+BERT \cite{devlin2019} introduced bidirectional pre-training, enabling deep
+contextual representations that substantially improved performance on a wide range
+of downstream tasks. Subsequent models such as GPT-3 \cite{brown2020} demonstrated
+that scale alone---in terms of parameters and training data---yields impressive
+few-shot generalization without task-specific fine-tuning. InstructGPT
+\cite{ouyang2022} further refined generation quality through reinforcement learning
+from human feedback (RLHF), producing outputs that are more aligned with user
+intent and less prone to toxic or off-topic responses. These models form the
+backbone of modern academic writing assistance tools, though their propensity for
+hallucination remains a significant challenge for factual domains such as academic
+research.
+
+\subsection{Retrieval-Augmented Generation}
+
+RAG \cite{lewis2020} was introduced as a framework for augmenting
+sequence-to-sequence models with a non-parametric memory component. By retrieving
+relevant documents at inference time and conditioning generation on them, RAG
+substantially reduces factual errors compared to purely parametric models and
+enables the generation of up-to-date, source-grounded content without retraining.
+Since its introduction, many variants have been proposed. Hypothetical Document
+Embedding (HyDE) \cite{gao2022} improves dense retrieval by first generating a
+hypothetical answer to the query and using its embedding for retrieval, bridging
+the semantic gap between short queries and long documents. Self-RAG
+\cite{asai2023} introduces adaptive retrieval by training models to decide when
+to retrieve and how to use retrieved passages, reducing unnecessary retrieval
+overhead. FLARE \cite{jiang2023} performs active retrieval triggered by low
+generation confidence, enabling more targeted use of external knowledge.
+
+\subsection{Passage Retrieval and Reranking}
+
+Hybrid retrieval combining sparse BM25 and dense vector search has become a
+standard approach in modern information retrieval systems, consistently outperforming
+either method in isolation \cite{karpukhin2020}. Cross-encoder
+reranking \cite{nogueira2019} refines the initial retrieval set by jointly encoding
+query-document pairs, yielding significantly higher precision than bi-encoder
+approaches at the cost of additional computation. Sentence-BERT \cite{reimers2019}
+provides efficient sentence embeddings suitable for semantic similarity search,
+enabling scalable dense retrieval without the latency of full cross-encoder scoring.
+MiniLM \cite{wang2020} offers a computationally efficient distilled model that
+maintains strong retrieval performance while being practical for deployment on
+CPU hardware, which is the target environment for ResearchGPT.
+
+\subsection{Automated Literature Survey and Academic Writing}
+
+Prior systems for automated academic writing have largely focused on abstract
+generation, related work synthesis, or paragraph-level generation. Tools such as
+Semantic Scholar's AI assistant and Elicit have demonstrated the ability to retrieve
+and summarize academic papers on demand, though they do not produce structured
+multi-section papers. SurveyAgent and similar tools generate related work sections
+by querying paper databases, but do not extend to full paper generation or structured
+field extraction. ResearchGPT extends these approaches to full IEEE paper generation
+with structured sections, inline citations, evaluation scoring, and a companion
+literature survey module that extracts eight structured fields per paper.
+
+\subsection{Evaluation of Natural Language Generation}
+
+Evaluating the quality of LLM-generated text is a well-studied problem. BLEU and
+ROUGE provide n-gram overlap metrics suitable for translation and summarization
+respectively, but are poorly suited to long-form academic generation where surface
+overlap with a reference is not a reliable quality signal. BERTScore \cite{zhang2020} provides a semantic similarity
+metric that better captures paraphrase equivalence. G-Eval \cite{liu2023}
+represents the current state of the art for reference-free evaluation of long-form
+text, using GPT-4 with chain-of-thought prompting to score dimensions such as
+coherence, consistency, fluency, and relevance. ResearchGPT adopts a G-Eval-inspired
+framework using the Cerebras LLM as the judge, scoring faithfulness and relevance
+on a 1--5 scale.
+
+% ══════════════════════════════════════════════════════════════════════════════
+\section{System Architecture}
+
+ResearchGPT follows a modular pipeline architecture consisting of seven core
+components: (1) Literature Survey, (2) Document Ingestion and Preprocessing,
+(3) Embedding and Vector Store, (4) Retrieval, (5) Generation, (6) Evaluation,
+and (7) Export. These modules communicate through well-defined interfaces, enabling
+independent development and testing of each component. The system exposes two
+primary workflows to the user: the \textit{literature survey workflow}, which
+fetches and analyses real arXiv papers and presents them in a structured table;
+and the \textit{paper generation workflow}, which retrieves relevant context from
+the indexed corpus and generates a complete IEEE paper.
+
+\begin{figure}[h]
+  \centering
+  \includegraphics[width=0.85\linewidth]{figures/architecturediagram.png}
+  \caption{High-level architecture of the ResearchGPT system showing the seven
+           core modules and their interactions. The literature survey pipeline
+           (top) and RAG-based paper generation pipeline (middle and bottom)
+           share the arXiv ingestion layer but operate independently.}
+  \label{fig:architecture}
+\end{figure}
+
+As shown in Figure~\ref{fig:architecture}, a user query enters the system through
+the Streamlit UI, triggering two parallel workflows. In the survey workflow, papers
+are fetched from arXiv \cite{arxiv2024}, analysed by the LLM to extract eight
+structured fields, and displayed in a twelve-column comparative table. In the
+generation workflow, the fetched PDFs are chunked and embedded using MiniLM
+\cite{wang2020}, and stored in ChromaDB \cite{chroma2024}. At query time, the
+retrieval module fetches relevant chunks using the selected strategy, the generation
+module produces the structured paper, and the evaluation module scores the output.
+Both workflows share the same arXiv ingestion layer, and the results of both are
+persisted in the session history for later retrieval.
+
+Table~\ref{tab:modules} summarises the key technologies employed by each module.
+
+\begin{table}[h]
+  \centering
+  \caption{Module--Technology Mapping for ResearchGPT}
+  \label{tab:modules}
+  \begin{tabularx}{\linewidth}{lX}
+    \toprule
+    \textbf{Module} & \textbf{Key Technologies} \\
+    \midrule
+    Literature Survey   & arXiv API, PyMuPDF, Cerebras LLM \\
+    Ingestion           & arXiv API, PyMuPDF, RecursiveCharacterTextSplitter \\
+    Embedding           & all-MiniLM-L6-v2, Sentence Transformers, ChromaDB \\
+    Retrieval           & BM25 (rank\_bm25), ChromaDB, cross-encoder/ms-marco-MiniLM-L-6-v2 \\
+    Generation          & Cerebras API, llama3.1-8b-instruct \\
+    Evaluation          & G-Eval (Cerebras LLM judge) \\
+    Export              & pdflatex, python-docx, BibtexParser \\
+    \bottomrule
+  \end{tabularx}
+\end{table}
+
+% ══════════════════════════════════════════════════════════════════════════════
+\section{Literature Survey Module}
+
+\subsection{Overview}
+
+The literature survey module is a distinct pipeline within ResearchGPT that
+provides researchers with a structured comparative analysis of existing work on
+their topic before they undertake original writing. Upon receiving a topic, the
+module fetches up to fifteen papers from arXiv, downloads and parses their full
+text, and uses the LLM to extract eight structured fields from each paper. The
+results are presented to the user in a twelve-column interactive table and also
+compiled into a generated IEEE-style survey PDF.
+
+\subsection{Paper Fetching and Analysis}
+
+Papers are fetched from arXiv using a keyword-based query derived from the user's
+topic, sorted by relevance. The system downloads up to 15 papers by default
+(configurable between 3 and 15), with full PDF text extracted via PyMuPDF
+\cite{pymupdf2024}. For each paper, the LLM is prompted to extract the following
+eight structured fields, with a constraint of one to three sentences per field:
+
+\begin{enumerate}[noitemsep]
+  \item \textbf{Problem Statement} --- the concrete problem or challenge addressed
+  \item \textbf{Objective} --- the specific goal or contribution
+  \item \textbf{Research Gap} --- what was missing in prior work
+  \item \textbf{Methodology} --- the exact algorithms, architectures, or techniques
+  \item \textbf{Features Focused} --- the specific input features or signals used
+  \item \textbf{Results \& Discussion} --- exact metric names and numeric values reported
+  \item \textbf{Limitations} --- explicit limitations the authors acknowledge
+  \item \textbf{Future Scope} --- concrete future directions suggested
+\end{enumerate}
+
+The extraction prompt explicitly forbids vague paraphrasing, requiring the LLM to
+quote or closely paraphrase actual content from the paper. Fields not present in
+the paper are recorded as ``Not mentioned'' rather than hallucinated. Up to 7000
+characters of extracted PDF text are passed to the LLM per paper to keep inference
+time manageable.
+
+\subsection{Structured Survey Table}
+
+The extracted fields, combined with bibliographic metadata (title, authors, year,
+DOI/arXiv ID, citation string), form a twelve-column structured table. The table
+supports two display modes in the UI: a \textit{Table view} with sticky headers
+and columns for scrollable comparison, and a \textit{Card view} displaying each
+paper as an expandable card with a three-column grid showing Problem Statement,
+Objective, and Research Gap. An arXiv link column provides direct access to the
+source paper for each entry.
+
+\subsection{Survey PDF Generation}
+
+In addition to the interactive table, the module generates a formal IEEE-style
+survey paper summarising the analysed papers. The survey paper is produced by
+prompting the LLM with a condensed context derived from the extracted fields of
+the top ten papers, and instructed to produce a complete multi-section survey
+including Abstract, Introduction, Literature Review, Problem Definition,
+Methodology, Results, Discussion, and Conclusion, with inline citations and a
+References section in IEEE format. This survey paper is available for download
+directly from the UI.
+
+% ══════════════════════════════════════════════════════════════════════════════
+\section{Document Ingestion and Preprocessing}
+
+\subsection{Paper Acquisition for RAG}
+
+For the RAG-based paper generation pipeline, papers are acquired dynamically from
+the arXiv API \cite{arxiv2024} based on the user's research topic. The system
+submits a relevance-sorted keyword-based search query and downloads up to five PDF
+papers per topic for indexing. A rate limiter enforces a one-second delay between
+consecutive downloads to comply with arXiv's usage policy. Failed downloads are
+retried up to three times with exponential backoff. If a PDF download fails
+entirely, the paper's abstract is used as a fallback text source to ensure partial
+coverage even when full text is unavailable.
+
+\subsection{PDF Parsing}
+
+Downloaded PDFs are parsed using PyMuPDF \cite{pymupdf2024}, which extracts
+raw text while preserving paragraph structure. Post-extraction, a cleaning pass
+removes headers, footers, page numbers, and \LaTeX{} artefacts using regular
+expression filters. Text is normalized by collapsing whitespace, removing control
+characters, and standardizing quotation marks. Up to ten pages are extracted per
+paper to balance content coverage against memory usage.
+
+\subsection{Chunking}
+
+Cleaned document text is split into overlapping chunks of 1000 characters with a
+350-character overlap. Overlap ensures that sentences spanning chunk boundaries
+are represented in both adjacent chunks, reducing information loss at boundaries.
+Each chunk is stored alongside metadata including the source paper title, authors,
+and arXiv identifier, enabling provenance tracking during retrieval. The chunk
+metadata is subsequently used to build the references section of the generated
+paper, ensuring that all cited sources correspond to real retrieved documents.
+
+% ══════════════════════════════════════════════════════════════════════════════
+\section{Embedding and Vector Store}
+
+Chunk embeddings are computed using the \texttt{all-MiniLM-L6-v2} model
+\cite{wang2020} from the Sentence Transformers library \cite{reimers2019}. This
+model produces 384-dimensional dense vectors and offers a favorable balance between
+embedding quality and inference speed on CPU hardware, making it well-suited for
+deployment in resource-constrained environments. The model achieves strong
+performance on semantic textual similarity benchmarks while requiring no GPU
+hardware for inference.
+
+Embeddings are stored and indexed in ChromaDB \cite{chroma2024}, a lightweight
+open-source vector database designed for AI applications. ChromaDB provides a
+persistent collection interface that supports cosine similarity search with
+efficient approximate nearest-neighbour indexing. Collections are named by topic
+slug (a normalized, lowercase, alphanumeric identifier derived from the topic
+string) and are reused across sessions for the same topic to avoid redundant
+re-indexing. A stale collection eviction policy ensures that when the number of
+stored collections exceeds ten, the oldest collection is deleted to reclaim disk
+storage and prevent unbounded growth over long-running deployments.
+
+BM25 index construction is performed in parallel with embedding. The BM25 index
+is built over the tokenized chunk texts using the \texttt{rank\_bm25} library,
+providing a complementary sparse retrieval index that excels at exact keyword
+matching. The BM25 and dense indices together form the backbone of the hybrid
+retrieval system described in Section~7.
+
+% ══════════════════════════════════════════════════════════════════════════════
+\section{Retrieval Strategies}
+
+ResearchGPT exposes four retrieval strategies. Each strategy retrieves a ranked
+list of the top-$k$ chunks (configurable, default $k = 6$) for use in generation.
+The strategy can be selected by the user or determined automatically by the system.
+
+\subsection{Standard Hybrid Retrieval}
+
+The standard strategy combines BM25 sparse retrieval with dense vector similarity
+search. Candidate chunks are retrieved independently from both indices, and their
+scores are interpolated with weight $\alpha$ (Vector 70\%, BM25 30\% by default):
+
+\begin{equation}
+  \text{score}(d) = \alpha \cdot \text{sim}_{\text{dense}}(d)
+                  + (1 - \alpha) \cdot \hat{s}_{\text{BM25}}(d)
+  \label{eq:hybrid}
+\end{equation}
+
+where $\hat{s}_{\text{BM25}}$ denotes the min-max normalised BM25 score. The
+merged candidate set (typically $3k$ candidates) is then passed through a
+cross-encoder reranker \cite{nogueira2019} using the
+\texttt{cross-encoder/ms-marco-MiniLM-L-6-v2} model, which jointly encodes each
+query-document pair to produce a relevance score. The top-$k$ chunks by reranker
+score form the final retrieval result. This strategy is the most computationally
+efficient and performs well for focused, well-defined queries.
+
+\subsection{HyDE Retrieval}
+
+HyDE \cite{gao2022} addresses the vocabulary mismatch problem between short user
+queries and long academic passages. A hypothetical document is first generated by
+the LLM for the query topic, producing a passage that resembles the kind of text
+that would appear in a relevant paper. The embedding of this hypothetical document
+is then used to query the vector store instead of the raw query embedding. This
+shifts the retrieval anchor from a sparse query representation to a dense
+passage-like representation, substantially improving recall for complex academic
+topics where the query itself contains few of the technical terms present in
+relevant passages. The retrieved candidates are subsequently reranked by the
+cross-encoder using the original query to ensure precision.
+
+\subsection{Complex Multi-Step Retrieval}
+
+The complex strategy decomposes the user query into multiple sub-questions using
+the LLM. Typically three to five sub-questions are generated, each targeting a
+distinct facet of the original query (e.g., motivations, methods, results,
+limitations, future directions). Each sub-question is independently retrieved
+against the vector store using dense similarity search. Results from all
+sub-queries are merged, deduplicated by chunk ID, and reranked jointly. This
+approach is particularly effective for broad or multi-faceted queries where a
+single retrieval pass may miss relevant perspectives. Its primary drawback is
+latency, as multiple LLM calls and retrieval passes are required.
+
+\subsection{Auto Strategy Selection}
+
+The auto strategy automatically selects between HyDE and complex retrieval based
+on query characteristics. Queries containing comparative keywords (e.g.,
+\textit{compare}, \textit{versus}, \textit{difference between}, \textit{benchmark})
+or exceeding sixteen words in length are routed to the complex strategy; all others
+are routed to HyDE. This provides a sensible default for users who do not wish to
+manually select a strategy, while still benefiting from the complementary strengths
+of both approaches.
+
+% ══════════════════════════════════════════════════════════════════════════════
+\section{Generation Module}
+
+\subsection{LLM Backend}
+
+The generation module uses the Cerebras inference platform with the
+\texttt{llama3.1-8b-instruct} model via an OpenAI-compatible REST API
+\cite{brown2020}. The Cerebras wafer-scale engine delivers significantly higher
+token throughput than GPU-based inference --- typically exceeding 1000 tokens per
+second --- enabling the generation of long-form academic papers with low end-to-end
+latency. Temperature is set to 0.2 to favour factual, consistent outputs over
+creative variation. Table~\ref{tab:config} summarises the generation configuration.
+
+\begin{table}[h]
+  \centering
+  \caption{LLM Generation Configuration}
+  \label{tab:config}
+  \begin{tabular}{ll}
+    \toprule
+    \textbf{Parameter} & \textbf{Value} \\
+    \midrule
+    Provider            & Cerebras              \\
+    Model               & llama3.1-8b-instruct  \\
+    Temperature         & 0.2                   \\
+    Max tokens          & 8192                  \\
+    Context chars/chunk & 3000                  \\
+    Max chunks (full)   & 9                     \\
+    Max chunks (fast)   & 6                     \\
+    Target paper length & 13--15 pages          \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+\subsection{Prompt Design}
+
+The generation prompt instructs the model to act as a university researcher writing
+an IEEE conference paper, outputting plain academic text with Roman numeral section
+headings. The prompt is structured in three parts: (1) a system role definition
+specifying the academic writing persona and output constraints; (2) the retrieved
+context, consisting of up to nine chunk passages each prefixed with their source
+paper title and arXiv ID; and (3) a structured generation instruction specifying
+section headings, length guidance (150--600 words per section), citation style,
+and forbidden elements.
+
+Forbidden elements in the prompt include: markdown formatting, bullet points or
+numbered lists within section bodies, fabricated statistics, citations not present
+in the provided context, and section headings not listed in the instruction.
+The prompt explicitly requests that every factual claim be followed by an inline
+citation of the form \texttt{[N]} referring to one of the retrieved sources. A
+minimum page target of thirteen pages is enforced through post-generation length
+checks, with the model re-prompted to expand if the output falls below the minimum.
+
+\subsection{Post-Processing}
+
+After generation, a markdown stripping pass removes any bold, italic, heading, or
+list markers that the model may have inserted despite instructions. A citation
+validation pass removes any numeric citation markers whose index exceeds the number
+of retrieved sources. A humanisation pass applies light paraphrasing to paragraphs
+detected as highly similar to retrieved passages, reducing potential plagiarism
+scores. Finally, a ROUGE-L similarity check is performed between the generated text
+and the retrieved context to flag and log any sections with unusually high overlap.
+
+% ══════════════════════════════════════════════════════════════════════════════
+\section{Evaluation Module}
+
+\subsection{G-Eval Framework}
+
+ResearchGPT evaluates each generated paper using a G-Eval \cite{liu2023} inspired
+framework that scores two dimensions: \textit{faithfulness} (whether all claims in
+the paper are supported by the retrieved context) and \textit{relevance} (whether
+the paper substantively addresses the user's topic). Both dimensions are scored on a
+1--5 integer scale by the Cerebras LLM acting as a judge. The judge receives the
+generated paper text (up to 7000 characters), up to three retrieved context chunks,
+and the user's original topic, and is prompted to reason step by step before
+assigning a score.
+
+\subsection{Faithfulness Scoring}
+
+The faithfulness prompt instructs the judge to identify any claims in the generated
+paper that cannot be verified from the provided context. A score of 5 indicates
+that all claims are fully grounded; a score of 1 indicates extensive hallucination.
+The judge is also prompted to provide a one-sentence reasoning string explaining
+its score, which is displayed in the UI alongside the numeric score.
+
+\subsection{Relevance Scoring}
+
+The relevance prompt instructs the judge to assess whether the generated paper's
+content is directly and substantively relevant to the user's stated topic. A score
+of 5 indicates that all sections are on-topic; a score of 1 indicates that the paper
+largely addresses a different topic. Relevance scores are typically more stable than
+faithfulness scores across topics, as the retrieval pipeline's topic-scoped indexing
+ensures that retrieved chunks are generally on-topic.
+
+% ══════════════════════════════════════════════════════════════════════════════
+\section{Export and Output Module}
+
+ResearchGPT supports three export formats: LaTeX/PDF, DOCX, and plain text. These
+are accessible from a persistent download bar at the bottom of the paper view, with
+a separate download option for the survey PDF in the literature survey view.
+
+\subsection{LaTeX and PDF Export}
+
+The generated paper text is formatted into a LaTeX document using a custom template
+that replicates IEEE conference paper style, including two-column layout, IEEE
+fonts, and a formatted references section. BibTeX entries for all cited sources are
+constructed from the retrieved chunk metadata (title, authors, year, arXiv ID) and
+deduplicated by a normalized citation key. The LaTeX source is compiled using
+\texttt{pdflatex} on the server, and the resulting PDF is made available for
+download. Compilation errors are caught and logged, with the raw LaTeX source also
+available as a fallback.
+
+\subsection{DOCX Export}
+
+A Word-compatible DOCX file is generated using the \texttt{python-docx} library.
+The DOCX export preserves the section structure of the generated paper, with
+section headings rendered as Heading~1 style and body text rendered as Normal style.
+Inline citations are retained in the text body. A References section is appended
+with numbered entries corresponding to the cited sources. The DOCX format is
+particularly useful for researchers who wish to make further edits in a word
+processor before submission.
+
+\subsection{BibTeX Export}
+
+A standalone BibTeX file is generated for all sources retrieved during the paper
+generation session. Citation keys are constructed from the first author's last name
+and the publication year, with a numeric suffix appended if a key collision occurs.
+This file can be imported directly into reference managers such as Zotero or used
+with Overleaf for LaTeX compilation.
+
+% ══════════════════════════════════════════════════════════════════════════════
+\section{User Interface}
+
+ResearchGPT provides a Streamlit-based web interface with a multi-session chat
+architecture modelled on the interaction patterns of modern conversational AI tools
+such as Claude and ChatGPT. The interface is designed to minimise friction for
+researchers unfamiliar with RAG systems while exposing sufficient control for
+advanced users.
+
+\begin{figure}[h]
+  \centering
+  \includegraphics[width=0.88\linewidth]{figures/Homepg ResearchGPT.png}
+  \caption{ResearchGPT home screen showing the topic input area, example topic
+           pills, and the Generation Settings button in the sidebar.}
+  \label{fig:welcome}
+\end{figure}
+
+\begin{figure}[h]
+  \centering
+  \includegraphics[width=0.88\linewidth]{figures/Output.png}
+  \caption{ResearchGPT Quality \& Sources view showing G-Eval faithfulness and
+           relevance scores, pipeline timing breakdown, and retrieval metrics
+           for the topic \textit{Network Intrusion Detection}.}
+  \label{fig:paperview}
+\end{figure}
+
+\subsection{Home Screen and Topic Input}
+
+On first load, the interface presents a welcome message from the ResearchGPT
+assistant explaining the system's capabilities, followed by three clickable example
+topic pills (\textit{finetuning methods for LLMs}, \textit{quantum computing},
+\textit{transformer architectures in NLP}). Clicking a pill pre-fills the topic
+input and initiates generation. The topic input is implemented as a persistent
+Streamlit chat input field anchored to the bottom of the screen, matching the
+interaction pattern of modern chat interfaces.
+
+\subsection{Sidebar and Session Management}
+
+The sidebar displays a ``New Research'' button that creates a new named session,
+followed by a unified ``Recent'' panel listing all previous sessions with their
+topic names. Active sessions are highlighted with a distinctive colour; completed
+sessions display a document icon. Each session entry includes a delete button for
+removing unwanted history entries. A ``Generation Settings'' button at the bottom
+of the sidebar opens a dedicated settings page.
+
+\subsection{Generation Settings}
+
+The settings page, accessible from the sidebar, allows the user to configure four
+generation parameters: (1) retrieval strategy (auto / standard / HyDE / complex);
+(2) number of survey papers (3--15); (3) top-$k$ retrieval chunks (3--12); and
+(4) whether to run G-Eval scoring after generation. Settings are persisted in the
+Streamlit session state across page interactions and saved when the user clicks the
+``Save \& return'' button.
+
+\subsection{Paper View and Tabs}
+
+Once a paper is generated, the main content area displays three tabs:
+\textit{Paper}, \textit{Survey \& Analysis}, and \textit{Quality \& Sources}.
+The Paper tab renders the generated IEEE text. The Survey \& Analysis tab presents
+the twelve-column literature survey table with a Table/Card view toggle and a
+per-paper arXiv link. The Quality \& Sources tab displays faithfulness and relevance
+score cards with colour-coded severity indicators (green for good, yellow for fair,
+red for poor), the pipeline timing breakdown, and retrieval scores including chunks
+retrieved, papers used, and average, maximum, and minimum retrieval scores.
+
+A faithfulness alert banner is shown at the top of the Quality tab when the
+faithfulness score falls below 3, informing the user that the generated paper may
+contain claims not fully grounded in the retrieved context. A warning badge
+(\textbf{!}) is also appended to the Quality \& Sources tab label itself when
+faithfulness falls below 3, making the issue visible without requiring the user to
+first navigate to that tab. A small colour-coded faithfulness badge (Good / Fair /
+Poor) is rendered inline in the paper metadata caption so users can see quality at
+a glance from the Paper tab. A section jump navigation bar with clean Roman-numeral
+labels (e.g., \textit{I. Introduction}, \textit{II. Methodology}) provides quick
+in-paper navigation for long generated papers. The entire interface uses a cohesive
+blue colour scheme (\texttt{\#2563eb} primary) replacing the default green theme.
+A download bar at the bottom of the Paper tab provides one-click export to PDF,
+DOCX, LaTeX source, and plain text.
+
+% ══════════════════════════════════════════════════════════════════════════════
+\section{Experiments and Results}
+
+\subsection{Evaluation Methodology}
+
+Generated papers are evaluated using the G-Eval framework described in Section~8.
+Each topic is processed end-to-end: arXiv papers are fetched and indexed, a paper
+is generated using the specified strategy, and the output is scored by the LLM
+judge. Timing measurements are captured for each pipeline stage (indexing,
+retrieval, generation) and summed to give total wall-clock time.
+
+\subsection{Retrieval Strategy Comparison}
+
+Table~\ref{tab:strategies} presents evaluation scores for three retrieval strategies
+applied to the topic \textit{Network Intrusion Detection}, a well-represented
+topic on arXiv with strong PDF availability.
+
+\begin{table}[h]
+  \centering
+  \caption{Retrieval Strategy Evaluation (Topic: Network Intrusion Detection)}
+  \label{tab:strategies}
+  \begin{tabular}{lcccc}
+    \toprule
+    \textbf{Strategy} & \textbf{Faithfulness} & \textbf{Relevance}
+                      & \textbf{Retrieval (s)} & \textbf{Total (s)} \\
+    \midrule
+    Standard & 2/5 & 5/5 & 18.72 & 40.55  \\
+    Complex  & 3/5 & 5/5 & 214.38 & 259.64 \\
+    HyDE     & 4/5 & 5/5 & 21.06 & 279.48 \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+HyDE achieves the highest faithfulness score (4/5) with retrieval time comparable
+to the standard strategy (21 seconds), making it the recommended default for
+most queries. The complex strategy improves faithfulness over standard but incurs
+substantially higher latency due to multiple LLM sub-query calls. The auto strategy
+selects HyDE for this topic (no comparative keywords, query length $<$ 16 words)
+and thus produces identical scores to the HyDE row.
+
+\subsection{Per-Query Results Across Topics}
+
+Table~\ref{tab:perquery} presents per-query evaluation results across five topics
+tested during system development, all using the HyDE strategy.
+
+\begin{table}[h]
+  \centering
+  \caption{Per-Query Evaluation Results (Strategy: HyDE)}
+  \label{tab:perquery}
+  \begin{tabular}{lccccc}
+    \toprule
+    \textbf{Topic} & \textbf{Faith.} & \textbf{Rel.}
+                   & \textbf{Papers} & \textbf{Chunks} & \textbf{Total (s)} \\
+    \midrule
+    Network Intrusion Detection      & 4/5 & 5/5 & 2/5 & 6/6 & 279.48  \\
+    Transformer Architectures in NLP & 5/5 & 5/5 & 5/5 & 6/6 & 179.51  \\
+    Federated Learning Privacy       & 1/5 & 5/5 & 1/5 & 6/6 & 364.37  \\
+    Finetuning Methods for LLMs      & 1/5 & 4/5 & 1/5 & 6/6 & 1135.07 \\
+    Graph Neural Networks            & 3/5 & 4/5 & 3/5 & 6/6 & 881.19  \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+\subsection{Analysis of Results}
+
+Several patterns are apparent from the results. First, \textit{relevance} remains
+consistently high (4--5/5) across all topics, confirming that the HyDE strategy
+reliably produces on-topic papers regardless of the specific subject area. The
+topic-scoped ChromaDB collection and HyDE's passage-like query embedding together
+ensure that retrieved chunks are topically aligned with the user's query.
+
+Second, \textit{faithfulness} correlates strongly with the number of papers
+contributing chunks to generation (the ``Papers'' column, reported as papers used
+out of papers indexed). Topics where chunks from multiple papers are retrieved
+(e.g., \textit{Transformer Architectures in NLP} at 5/5 papers, faithfulness 5/5)
+achieve near-perfect faithfulness, as the LLM has a rich, diverse retrieved context
+to draw from. Topics where only one paper contributes usable chunks
+(e.g., \textit{Federated Learning Privacy} and \textit{Finetuning Methods for
+LLMs} at 1/5 papers) achieve low faithfulness scores (1/5), as the model is
+forced to rely on its parametric knowledge to fill section content, leading to
+claims not grounded in the retrieved context.
+
+Third, \textit{total generation time} varies widely (179--1135 seconds), primarily
+driven by indexing time, which is proportional to the number and size of PDFs
+successfully downloaded. The retrieval and generation stages contribute modestly to
+total time (typically 20--40 seconds combined). These findings indicate that the
+primary bottleneck for both faithfulness quality and latency is arXiv PDF
+availability and download success rate.
+
+\subsection{Retrieval Score Analysis}
+
+For all tested topics, the retrieval precision (Average/Max/Min reranker scores)
+is uniformly 1.000/1.000/1.000, indicating that the cross-encoder consistently
+assigns maximum confidence to the top-$k$ retrieved chunks. All six configured
+retrieval slots (Chunks: 6/6) are filled in every run, confirming that the indexed
+corpus provides sufficient coverage for the retrieval module to operate at full
+capacity even when only one or two PDFs are successfully downloaded.
+
+% ══════════════════════════════════════════════════════════════════════════════
+\section{Post-Generation Refinement}
+
+ResearchGPT supports iterative post-generation refinement, enabling users to
+modify specific aspects of a generated paper through natural language instructions.
+After a paper is generated, the user can type an instruction such as \textit{expand
+the methodology section} or \textit{add more detail about LoRA fine-tuning} into
+the chat input. The refinement module constructs a targeted prompt containing the
+original paper, the user instruction, and a sample of the retrieved context, then
+calls the LLM to produce a revised version.
+
+The refined paper replaces the previous version in the session state, and the
+G-Eval faithfulness and relevance scores are recomputed to reflect the updated
+content. The chat history is preserved, allowing users to trace the evolution of
+the paper across multiple refinement passes. An iterative pass counter is
+maintained in session state to prevent unbounded refinement loops in automated
+testing.
+
+This workflow mirrors the iterative drafting process used by human authors and
+provides a practical mechanism for improving paper quality without regenerating
+from scratch. In practice, refinement instructions targeting specific sections
+(e.g., expanding a single section) tend to produce higher-quality results than
+broad instructions, as the LLM can focus its attention on a delimited portion of
+the paper. Users seeking to substantially restructure the paper are advised to
+initiate a new generation with a modified topic or strategy rather than relying
+solely on refinement.
+
+% ══════════════════════════════════════════════════════════════════════════════
+\section{Discussion}
+
+\subsection{Effectiveness of Retrieval Strategies}
+
+The experimental results demonstrate that HyDE consistently outperforms standard
+hybrid retrieval on faithfulness while maintaining comparable latency, making it
+the recommended default strategy for most academic topics. The performance advantage
+of HyDE stems from its use of a hypothetical document embedding as the retrieval
+anchor, which is semantically closer to the dense representations of academic
+passages than a short query embedding. For queries containing comparative or
+multi-faceted language, the complex strategy offers further benefits through
+sub-question decomposition, at the cost of additional latency.
+
+\subsection{Faithfulness and Source Coverage}
+
+The primary determinant of faithfulness quality in ResearchGPT is the breadth of
+arXiv source coverage for a given topic. When full PDF text is available for
+multiple papers, the retrieved context is sufficiently rich and diverse that the
+LLM can write almost entirely from retrieved evidence, achieving near-perfect
+faithfulness. When PDF downloads fail and only one paper's text is indexed, the LLM
+must rely on parametric knowledge for a substantial portion of the content, leading
+to low faithfulness scores even with high relevance. This dependency on PDF
+availability is the most significant limitation of the current system.
+
+Several mitigations are possible. First, falling back to abstract text when PDF
+download fails (already implemented) provides partial coverage. Second, integrating
+additional academic databases such as Semantic Scholar and PubMed would increase
+the probability of successful full-text retrieval for any given topic. Third,
+increasing the number of arXiv papers fetched (up to the configured maximum of
+fifteen) would improve coverage at the cost of higher indexing time.
+
+\subsection{Scalability and Deployment}
+
+The current implementation is designed for single-user local deployment on standard
+laptop hardware. The use of ChromaDB as a persistent vector store and the stale
+collection eviction policy ensure that storage usage remains bounded over time.
+For multi-user deployment, the session state management would need to be adapted
+to a server-side persistence model (e.g., Redis or a relational database), and
+the synchronous arXiv fetch-and-index pipeline would benefit from asynchronous
+execution to avoid blocking concurrent users.
+
+\subsection{Ethical Considerations}
+
+ResearchGPT is designed as an \textit{assistance} tool, not a replacement for
+human authorship. The generated papers are explicitly labelled as AI-generated
+outputs and are intended to serve as drafts or starting points for human
+researchers rather than as final submissions. The G-Eval faithfulness score
+provides users with an indicator of how much the generated content is grounded
+in retrieved evidence versus potentially fabricated, enabling informed decision
+making about which sections require the most careful human review.
+
+% ══════════════════════════════════════════════════════════════════════════════
+\section{Conclusion}
+
+This paper presented ResearchGPT, a complete end-to-end system for generating
+IEEE-style research papers using retrieval-augmented generation. The system
+integrates seven functional modules: literature survey, document ingestion,
+embedding and vector storage, multi-strategy retrieval (standard hybrid, HyDE,
+complex, and auto), LLM-based generation via Cerebras, G-Eval evaluation,
+and multi-format export. An automated literature survey module complements the
+paper generation pipeline by providing structured eight-field extraction and a
+twelve-column comparative table for up to fifteen arXiv papers per topic.
+
+Experimental evaluation across five diverse topics demonstrates that relevance
+is consistently high (4--5/5) across all retrieval strategies, while faithfulness
+is primarily determined by the breadth of arXiv PDF coverage for the topic.
+The HyDE strategy achieves the best faithfulness-to-latency trade-off among the
+evaluated strategies. The G-Eval evaluation framework and per-session quality
+indicators provide users with actionable feedback for iterative improvement.
+
+The system's modular architecture supports straightforward extension to new
+retrieval strategies, LLM backends, and document corpora. Future work will focus
+on integrating additional academic databases, supporting multi-document indexing
+across sessions, and investigating larger LLM backends for improved faithfulness
+on low-coverage topics. ResearchGPT represents a practical and accessible tool
+for researchers seeking AI-assisted paper generation grounded in retrieved academic
+evidence.
+
+% ══════════════════════════════════════════════════════════════════════════════
+\begin{thebibliography}{99}
+
+\bibitem{devlin2019}
+J. Devlin, M.-W. Chang, K. Lee, and K. Toutanova,
+``BERT: Pre-training of Deep Bidirectional Transformers for Language Understanding,''
+in \textit{Proc. NAACL-HLT}, 2019, pp. 4171--4186.
+
+\bibitem{brown2020}
+T. B. Brown \textit{et al.},
+``Language Models are Few-Shot Learners,''
+in \textit{Advances in Neural Information Processing Systems}, vol. 33, 2020,
+pp. 1877--1901.
+
+\bibitem{ouyang2022}
+L. Ouyang \textit{et al.},
+``Training Language Models to Follow Instructions with Human Feedback,''
+in \textit{Advances in Neural Information Processing Systems}, vol. 35, 2022,
+pp. 27730--27744.
+
+\bibitem{lewis2020}
+P. Lewis \textit{et al.},
+``Retrieval-Augmented Generation for Knowledge-Intensive NLP Tasks,''
+in \textit{Advances in Neural Information Processing Systems}, vol. 33, 2020,
+pp. 9459--9474.
+
+\bibitem{gao2022}
+L. Gao, X. Ma, J. Lin, and J. Callan,
+``Precise Zero-Shot Dense Retrieval without Relevance Labels,''
+\textit{arXiv preprint arXiv:2212.10496}, 2022.
+
+\bibitem{nogueira2019}
+R. Nogueira and K. Cho,
+``Passage Re-ranking with BERT,''
+\textit{arXiv preprint arXiv:1901.04085}, 2019.
+
+\bibitem{liu2023}
+Y. Liu \textit{et al.},
+``G-Eval: NLG Evaluation using GPT-4 with Better Human Alignment,''
+in \textit{Proc. EMNLP}, 2023, pp. 2511--2522.
+
+\bibitem{arxiv2024}
+arXiv.org,
+``arXiv API Access,''
+\url{https://info.arxiv.org/help/api/index.html}, 2024.
+
+\bibitem{pymupdf2024}
+Artifex Software,
+``PyMuPDF: Python Bindings for MuPDF,''
+\url{https://pymupdf.readthedocs.io}, 2024.
+
+\bibitem{chroma2024}
+Chroma Core,
+``Chroma: the AI-native open-source embedding database,''
+\url{https://www.trychroma.com}, 2024.
+
+\bibitem{wang2020}
+W. Wang \textit{et al.},
+``MiniLM: Deep Self-Attention Distillation for Task-Agnostic Compression
+of Pre-Trained Transformers,''
+in \textit{Advances in Neural Information Processing Systems}, vol. 33, 2020,
+pp. 5776--5788.
+
+\bibitem{reimers2019}
+N. Reimers and I. Gurevych,
+``Sentence-BERT: Sentence Embeddings using Siamese BERT-Networks,''
+in \textit{Proc. EMNLP-IJCNLP}, 2019, pp. 3982--3992.
+
+\bibitem{asai2023}
+A. Asai \textit{et al.},
+``Self-RAG: Learning to Retrieve, Generate, and Critique through Self-Reflection,''
+\textit{arXiv preprint arXiv:2310.11511}, 2023.
+
+\bibitem{jiang2023}
+Z. Jiang \textit{et al.},
+``Active Retrieval Augmented Generation,''
+in \textit{Proc. EMNLP}, 2023, pp. 7969--7992.
+
+\bibitem{karpukhin2020}
+V. Karpukhin \textit{et al.},
+``Dense Passage Retrieval for Open-Domain Question Answering,''
+in \textit{Proc. EMNLP}, 2020, pp. 6769--6781.
+
+\bibitem{zhang2020}
+T. Zhang \textit{et al.},
+``BERTScore: Evaluating Text Generation with BERT,''
+in \textit{Proc. ICLR}, 2020.
+
+\end{thebibliography}
+
+\end{document}

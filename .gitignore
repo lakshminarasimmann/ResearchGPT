@@ -7,3 +7,5 @@ rag_new/data/vector_db/
 rag_new/data/papers/
 rag_new/output/
 rag_new/models/
+chroma.sqlite3 /node_modules /test-results
+rag_new/data/vector_db
