@@ -1,0 +1,58 @@
+# ResearchGPT — Python dependencies
+#   pip install -r requirements.txt
+#
+# System dependencies (not installable with pip):
+#   * Ollama        — https://ollama.com, then: ollama pull mistral:7b
+#                     Only needed for RAG_LLM_PROVIDER=ollama (the default).
+#   * pdflatex      — optional. Only the "LaTeX PDF" export needs it
+#                     (TeX Live or MiKTeX). Every other export works without it.
+
+# Core RAG framework
+langchain>=0.2.0
+langchain-community>=0.2.0
+langchain-text-splitters>=0.2.0
+
+# Vector store
+chromadb>=0.5.0,<2.0.0
+
+# Embeddings & reranking (pulls in torch)
+sentence-transformers>=3.0.0
+
+# PDF parsing
+pymupdf>=1.24.0
+
+# arXiv ingestion
+arxiv>=2.1.0
+
+# Sparse retrieval
+rank_bm25>=0.2.2
+
+# ML utilities
+scikit-learn>=1.4.0
+numpy>=1.26.0
+pandas>=2.2.0
+
+# LLM providers
+openai>=1.30.0          # also used for any OpenAI-compatible endpoint
+ollama>=0.2.0
+requests>=2.31.0
+python-dotenv>=1.0.0
+
+# Output generation
+reportlab>=4.2.0        # IEEE PDF
+python-docx>=1.1.0      # Word (.docx) export
+openpyxl>=3.1.0         # Excel (.xlsx) export, via pandas
+attrs>=23.2.0
+
+# Evaluation metrics
+rouge-score>=0.1.2      # ROUGE-L scoring
+
+# Streamlit UI (legacy — see ui.py; the React frontend is the primary UI)
+streamlit>=1.35.0
+
+# API behind the React frontend
+fastapi>=0.111.0
+uvicorn[standard]>=0.30.0
+
+# Progress bars
+tqdm>=4.66.0

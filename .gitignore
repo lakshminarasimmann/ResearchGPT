@@ -1,11 +1,42 @@
-venv/
+# ─── Python ───────────────────────────────────────────────────────────────────
 __pycache__/
-*.pyc
-*.pyo
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+
+# Virtual environments
+venv/
+.venv/
+env/
+
+# ─── Secrets / local config ───────────────────────────────────────────────────
+# .env holds the local machine's settings; .env.example is the tracked template.
 .env
-rag_new/data/vector_db/
-rag_new/data/papers/
-rag_new/output/
-rag_new/models/
-chroma.sqlite3 /node_modules /test-results
-rag_new/data/vector_db
+!.env.example
+
+# ─── Node / frontend ──────────────────────────────────────────────────────────
+node_modules/
+frontend/dist/
+frontend/node_modules/
+*.local
+
+# Playwright
+test-results/
+playwright-report/
+blob-report/
+.playwright/
+
+# ─── Generated data (rebuilt by running the app) ──────────────────────────────
+models/
+data/vector_db/
+data/papers/
+data/history/
+chroma.sqlite3
+output/
+logs/
+
+# ─── Editors / OS ─────────────────────────────────────────────────────────────
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db

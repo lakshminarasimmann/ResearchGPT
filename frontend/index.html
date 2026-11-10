@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="en" data-theme="dark">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <title>ResearchGPT — arXiv to IEEE paper</title>
+    <meta
+      name="description"
+      content="Turn a research topic into a literature survey and a cited IEEE-style paper, grounded in real arXiv sources."
+    />
+    <meta name="color-scheme" content="dark light" />
+
+    <!-- Apply the saved theme before first paint so there is no flash. -->
+    <script>
+      try {
+        var t = localStorage.getItem("researchgpt.theme");
+        if (t !== "dark" && t !== "light") {
+          t = window.matchMedia("(prefers-color-scheme: light)").matches ? "light" : "dark";
+        }
+        document.documentElement.dataset.theme = t;
+      } catch (e) {
+        /* storage blocked — the stylesheet default (dark) applies */
+      }
+    </script>
+
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      rel="stylesheet"
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&family=Source+Serif+4:opsz,wght@8..60,400;8..60,600&display=swap"
+    />
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>
