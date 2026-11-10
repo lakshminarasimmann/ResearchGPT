@@ -174,6 +174,30 @@ export function getHealth(): Promise<HealthResponse> {
   return jsonFetch("/api/health");
 }
 
+/** A run in the durable archive under docs/runs/ (not the reloadable cache). */
+export interface ArchiveEntry {
+  file: string;
+  topic: string;
+  modified: number;
+  bytes: number;
+}
+
+export interface ArchiveDetail {
+  file: string;
+  topic: string;
+  metrics: Record<string, string>;
+  markdown: string;
+  modified: number;
+}
+
+export function getArchive(): Promise<ArchiveEntry[]> {
+  return jsonFetch("/api/archive");
+}
+
+export function getArchiveEntry(fname: string): Promise<ArchiveDetail> {
+  return jsonFetch(`/api/archive/${encodeURIComponent(fname)}`);
+}
+
 export function startGenerate(opts: GenerateOptions): Promise<{ job_id: string }> {
   return jsonFetch("/api/generate", { method: "POST", body: JSON.stringify(opts) });
 }

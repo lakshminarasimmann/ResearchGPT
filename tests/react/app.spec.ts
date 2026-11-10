@@ -412,6 +412,38 @@ test.describe('survey exports', () => {
   });
 });
 
+test.describe('archived runs', () => {
+  test('Runs menu opens an archived record with its metrics', async ({ page }) => {
+    await mockBackend(page);
+    await page.goto('/');
+
+    const runs = page.getByRole('button', { name: /^Runs/ });
+    await expect(runs).toContainText('1');
+    await runs.click();
+    await expect(page.locator('.menu-panel')).toBeVisible();
+
+    await page.locator('.menu-panel .history-item', { hasText: 'Vision transformers' }).click();
+    await expect(page.locator('.menu-panel')).toBeHidden();
+
+    // The record shows its headline scores and the committed file it came from.
+    const panel = page.locator('.archive-panel');
+    await expect(panel).toBeVisible();
+    await expect(panel.locator('.score-pill').first()).toHaveText('4.5 / 5');
+    await expect(panel.locator('.archive-note')).toContainText('2026-01-02-vision-transformers.md');
+    await expect(panel.locator('.paper-text')).toContainText('ARCHIVED PAPER BODY');
+
+    // An archived record replaces the composer rather than sitting beside it.
+    await expect(page.getByPlaceholder('Enter a research topic…')).toBeHidden();
+  });
+
+  test('an empty archive says so', async ({ page }) => {
+    await mockBackend(page, { archive: [] });
+    await page.goto('/');
+    await page.getByRole('button', { name: /^Runs/ }).click();
+    await expect(page.locator('.menu-empty')).toHaveText(/No runs archived yet/);
+  });
+});
+
 test.describe('chats and history', () => {
   test('new chat, switch between chats, close chat', async ({ page }) => {
     await mockBackend(page, {

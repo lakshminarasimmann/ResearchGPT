@@ -176,6 +176,46 @@ def list_archive() -> list[dict]:
     return sorted(entries, key=lambda e: e["modified"], reverse=True)
 
 
+def read_archive(fname: str) -> Optional[dict]:
+    """One archived run: its metrics table parsed out, plus the raw Markdown.
+
+    ``fname`` is matched against the archive directory listing rather than
+    joined directly, so a crafted name cannot escape the folder.
+    """
+    if os.path.basename(fname) != fname or not fname.endswith(".md"):
+        return None
+    path = os.path.join(Config.ARCHIVE_DIR, fname)
+    if not os.path.isfile(path):
+        return None
+
+    try:
+        with open(path, encoding="utf-8") as f:
+            markdown = f.read()
+    except OSError as e:
+        logger.warning("Could not read archive entry %s: %s", fname, e)
+        return None
+
+    topic = fname
+    metrics: dict = {}
+    for line in markdown.splitlines():
+        line = line.strip()
+        if line.startswith("# ") and topic == fname:
+            topic = line[2:].strip()
+        # Rows of the metrics table: | Key | Value |
+        if line.startswith("|") and line.endswith("|"):
+            cells = [c.strip() for c in line.strip("|").split("|")]
+            if len(cells) == 2 and cells[0] not in ("Metric", "---") and "---" not in cells[0]:
+                metrics[cells[0]] = cells[1]
+
+    return {
+        "file": fname,
+        "topic": topic,
+        "metrics": metrics,
+        "markdown": markdown,
+        "modified": os.path.getmtime(path),
+    }
+
+
 def _write_index() -> None:
     entries = list_archive()
     lines = [

@@ -21,6 +21,7 @@ from src.pipeline.ui_pipeline import run_rag_for_ui_pipeline, refine_paper_with_
 from src.output_pdf.docx_generator import generate_paper_docx, generate_survey_docx
 from src.output_pdf.survey_pdf_generator import generate_survey_combined_pdf
 from src.history.paper_history import save_result, list_history, load_result, delete_result
+from src.history.archive import list_archive, read_archive
 from src.generation.generator import RAGGenerator
 from src.generation.llm_client import LLMClient
 from src.analysis.paper_analyzer import analyze_topic, generate_sample_paper
@@ -252,6 +253,24 @@ def remove_history_item(fname: str):
     if not ok:
         raise HTTPException(404, "History entry not found")
     return {"deleted": True}
+
+
+@app.get("/api/archive")
+def get_archive():
+    """Every paper the pipeline has produced, newest first.
+
+    This is the durable record under docs/runs/, not the reloadable UI cache
+    in data/history/ - it survives a cleared cache and is committed.
+    """
+    return list_archive()
+
+
+@app.get("/api/archive/{fname}")
+def get_archive_entry(fname: str):
+    entry = read_archive(fname)
+    if entry is None:
+        raise HTTPException(404, "Archive entry not found")
+    return entry
 
 
 @app.post("/api/history/save")

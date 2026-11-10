@@ -423,7 +423,7 @@ The frontend suite runs against a mocked backend and requires neither a model no
 npx playwright test --config=playwright.react.config.ts
 ```
 
-Twenty-five end-to-end tests cover the empty state, settings persistence, the survey and generation flows, backend failure handling, export downloads, refinement, and session and history management.
+Twenty-seven end-to-end tests cover the empty state, settings persistence, the survey and generation flows, backend failure handling, export downloads, refinement, the archived-runs view, and session and history management.
 
 A separate configuration targets the legacy Streamlit interface:
 

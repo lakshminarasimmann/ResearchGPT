@@ -1427,3 +1427,39 @@
     max-height: none;
   }
 }
+
+/* ── Archived run ──────────────────────────────────────────────────────────── */
+.archive-panel {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-4);
+}
+
+.archive-note {
+  font-size: 0.76rem;
+  color: var(--text-subtle);
+}
+
+.archive-note code {
+  font-size: 0.72rem;
+  padding: 2px 6px;
+  border-radius: var(--r-sm);
+  background: var(--surface-3);
+  color: var(--text-muted);
+}
+
+/* Explanatory line inside a dropdown. */
+.menu-note {
+  padding: 0 var(--s-3) var(--s-3);
+  font-size: 0.72rem;
+  line-height: 1.5;
+  color: var(--text-subtle);
+}
+
+.menu-note code {
+  font-size: 0.7rem;
+  padding: 1px 4px;
+  margin: 0 2px;
+  border-radius: 4px;
+  background: var(--surface-3);
+}

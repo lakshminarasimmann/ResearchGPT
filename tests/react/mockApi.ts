@@ -35,6 +35,35 @@ export function makeResult(overrides: Record<string, unknown> = {}) {
   };
 }
 
+export const archiveEntry = {
+  file: '2026-01-02-vision-transformers.md',
+  topic: 'Vision transformers',
+  modified: 1767312000,
+  bytes: 4096,
+};
+
+export const archiveDetail = {
+  ...archiveEntry,
+  metrics: {
+    Faithfulness: '4.5 / 5',
+    Relevance: '4 / 5',
+    'Source papers': '5',
+    'Similarity to sources': '18%',
+    'ROUGE-L': '0.08',
+  },
+  markdown: [
+    '# Vision transformers',
+    '',
+    '| Metric | Value |',
+    '|---|---|',
+    '| Faithfulness | 4.5 / 5 |',
+    '',
+    '## Paper',
+    '',
+    'ARCHIVED PAPER BODY',
+  ].join('\n'),
+};
+
 export const surveyRows = [
   {
     'No.': 1,
@@ -74,6 +103,10 @@ export interface MockOptions {
   surveyJob?: JobState[];
   generateJob?: JobState[];
   refineJob?: JobState[];
+  /** Rows returned by GET /api/archive. */
+  archive?: unknown[];
+  /** Detail returned by GET /api/archive/:file. */
+  archiveDetail?: unknown;
   /** Status codes to return from the job-start endpoints (default 200). */
   generateStartStatus?: number;
   surveyStartStatus?: number;
@@ -165,6 +198,13 @@ export async function mockBackend(page: Page, opts: MockOptions = {}): Promise<M
         return json(route, { deleted: true });
       }
       return json(route, opts.historyItems?.[fname] ?? { ...makeResult(), topic: 'from history' });
+    }
+
+    if (path === '/api/archive' && method === 'GET') {
+      return json(route, opts.archive ?? [archiveEntry]);
+    }
+    if (path.startsWith('/api/archive/')) {
+      return json(route, opts.archiveDetail ?? archiveDetail);
     }
 
     if (path === '/api/fix-citations') return json(route, { paper_text: 'CITATIONS FIXED TEXT' });

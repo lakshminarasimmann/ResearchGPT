@@ -17,6 +17,8 @@ import {
   type Settings,
   type SurveyJob,
   type SurveyResult,
+  getArchive,
+  type ArchiveEntry,
 } from "./api";
 import SettingsPanel from "./Settings";
 import ResultPanel from "./ResultPanel";
@@ -26,6 +28,7 @@ import ThemeToggle from "./components/ThemeToggle";
 import ProgressPanel from "./components/ProgressPanel";
 import Landing from "./components/Landing";
 import Menu from "./components/Menu";
+import ArchivePanel from "./components/ArchivePanel";
 import "./App.css";
 
 interface ChatSession {
@@ -37,6 +40,8 @@ interface ChatSession {
   surveyJob: SurveyJob | null;
   surveyResult: SurveyResult | null;
   result: PipelineResult | null;
+  /** Set when this tab is showing a record from the durable archive. */
+  archiveFile: string | null;
 }
 
 const POLL_MS = 1500;
@@ -87,6 +92,7 @@ function makeChat(id: number): ChatSession {
     surveyJob: null,
     surveyResult: null,
     result: null,
+    archiveFile: null,
   };
 }
 
@@ -97,6 +103,7 @@ export default function App() {
 
   const [topicInput, setTopicInput] = useState("");
   const [history, setHistory] = useState<HistoryEntry[]>([]);
+  const [archive, setArchive] = useState<ArchiveEntry[]>([]);
   const [settings, setSettings] = useState<Settings>(DEFAULT_SETTINGS);
   const [showSettings, setShowSettings] = useState(false);
   const [instruction, setInstruction] = useState("");
@@ -113,9 +120,11 @@ export default function App() {
   };
 
   const refreshHistory = () => getHistory().then(setHistory).catch(() => {});
+  const refreshArchive = () => getArchive().then(setArchive).catch(() => {});
 
   useEffect(() => {
     refreshHistory();
+    refreshArchive();
   }, []);
 
   useEffect(() => {
@@ -127,7 +136,10 @@ export default function App() {
   }, []);
 
   const saveToHistory = (topic: string, result: PipelineResult) =>
-    saveHistory(topic, result).then(refreshHistory).catch(() => {});
+    saveHistory(topic, result)
+      .then(refreshHistory)
+      .then(refreshArchive)
+      .catch(() => {});
 
   const newChat = () => {
     const id = nextChatId.current++;
@@ -235,6 +247,12 @@ export default function App() {
     setActiveChatId(id);
   };
 
+  const openArchiveItem = (file: string, topic: string) => {
+    const id = nextChatId.current++;
+    setChats((cs) => [...cs, { ...makeChat(id), topic, archiveFile: file }]);
+    setActiveChatId(id);
+  };
+
   const removeHistoryItem = async (fname: string, e: React.MouseEvent) => {
     e.stopPropagation();
     await deleteHistory(fname);
@@ -279,9 +297,9 @@ export default function App() {
   };
 
   // The composer is shown whenever there is nothing to look at yet.
-  const showComposer = !active.result && !active.running;
+  const showComposer = !active.result && !active.running && !active.archiveFile;
   // Keep the explanatory hero only until this session has actually run something.
-  const showIntro = !active.job && !active.surveyJob && !active.result;
+  const showIntro = !active.job && !active.surveyJob && !active.result && !active.archiveFile;
 
   const composer = (
     <div className="topic-input-row">
@@ -349,6 +367,42 @@ export default function App() {
                           >
                             ✕
                           </button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </>
+              )}
+            </Menu>
+
+            <Menu label="Runs" count={archive.length}>
+              {(close) => (
+                <>
+                  <div className="menu-heading">
+                    <span>Archived runs</span>
+                    <span>{archive.length}</span>
+                  </div>
+                  <div className="menu-note">
+                    Every paper produced, with its scores and sources. Written to
+                    <code>docs/runs/</code> as each run finishes.
+                  </div>
+                  {archive.length === 0 ? (
+                    <div className="menu-empty">No runs archived yet.</div>
+                  ) : (
+                    <div className="history-list">
+                      {archive.map((a) => (
+                        <div
+                          key={a.file}
+                          className="history-item"
+                          onClick={() => {
+                            openArchiveItem(a.file, a.topic);
+                            close();
+                          }}
+                        >
+                          <div className="history-topic">{a.topic}</div>
+                          <span className="history-meta">
+                            {new Date(a.modified * 1000).toLocaleDateString()}
+                          </span>
                         </div>
                       ))}
                     </div>
@@ -437,6 +491,8 @@ export default function App() {
               <h2>{active.topic}</h2>
             </div>
           )}
+
+          {active.archiveFile && <ArchivePanel file={active.archiveFile} />}
 
           {active.phase === "survey" && active.surveyJob && active.surveyJob.status === "running" && (
             <ProgressPanel
