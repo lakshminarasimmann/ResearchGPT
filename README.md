@@ -11,12 +11,15 @@ ResearchGPT searches arXiv for relevant work, indexes the full text of each pape
   <img alt="Ollama" src="https://img.shields.io/badge/ollama-mistral%3A7b-000000?logo=ollama&logoColor=white">
 </p>
 
+![ResearchGPT](docs/screenshots/landing-dark.png)
+
 ---
 
 ## Table of contents
 
 - [Overview](#overview)
 - [Capabilities](#capabilities)
+- [Interface](#interface)
 - [Architecture](#architecture)
 - [Requirements](#requirements)
 - [Installation](#installation)
@@ -72,6 +75,52 @@ Given a topic, the system will:
 A React single-page application with a horizontal command bar, parallel research sessions as tabs, live job progress, a saved-paper history, and light and dark themes. A status indicator reports whether the backend and the configured model are reachable before a long job is started.
 
 A legacy Streamlit interface is retained as `ui.py` for reference.
+
+---
+
+## Interface
+
+### Generated paper
+
+Self-evaluation scores, source and length statistics, and one-click export to
+Word, PDF or LaTeX PDF, above the draft itself.
+
+![Generated paper](docs/screenshots/result.png)
+
+### Provenance
+
+Every draft keeps the passages it was written from. The contribution bar shows
+how many retrieved chunks came from each paper — a draft drawing on a single
+source is visible immediately, before you read a word of it.
+
+![Retrieved sources](docs/screenshots/sources.png)
+
+### Literature survey
+
+Every retrieved paper reduced to a twelve-column table — problem, objective,
+research gap, methodology, results, limitations and future scope — exportable to
+CSV, Excel, Word or a formatted IEEE PDF.
+
+![Literature survey](docs/screenshots/survey.png)
+
+### Settings and history
+
+Author details, survey size, retrieval strategy and top-k are adjustable per run.
+Completed papers are saved and reopened from the History menu in the top bar.
+
+<table>
+  <tr>
+    <td width="50%"><img alt="Settings drawer" src="docs/screenshots/settings.png"></td>
+    <td width="50%"><img alt="History menu" src="docs/screenshots/history.png"></td>
+  </tr>
+</table>
+
+### Light theme
+
+![Light theme](docs/screenshots/landing-light.png)
+
+> Screenshots are regenerated with `node scripts/capture-screenshots.mjs` while both
+> processes are running.
 
 ---
 
