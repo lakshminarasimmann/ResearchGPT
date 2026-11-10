@@ -14,8 +14,9 @@ class GenerateRequest(BaseModel):
     run_plagiarism_check: bool = True
     apply_ai_rewrite: bool = True
     apply_humanize: bool = True
-    target_similarity_pct: float = 25.0
-    max_rewrite_passes: int = 1
+    # Defaults come from config so .env stays the single source of truth.
+    target_similarity_pct: float = Config.TARGET_SIMILARITY_PCT
+    max_rewrite_passes: int = Config.MAX_REWRITE_PASSES
     fast_5page_mode: bool = True
     min_pages: int = Config.MIN_PAGES_DEFAULT
     author_name: str = ""

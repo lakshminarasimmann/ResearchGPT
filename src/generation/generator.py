@@ -120,13 +120,29 @@ class RAGGenerator:
         min_w = Config.SECTION_MIN_WORDS
         max_w = Config.SECTION_MAX_WORDS
 
-        preferences_block = ""
+        # The title page is the one part of the paper with no grounding in the
+        # sources. Left unspecified, the model fills it from the only names,
+        # affiliations and e-mail addresses in its prompt - the front matter of
+        # the retrieved papers - and attributes the draft to their real authors.
         if user_preferences and user_preferences.strip():
             preferences_block = f"""
-AUTHOR PREFERENCES (follow these exactly while writing):
+AUTHOR DETAILS (use these verbatim on the title page, and nowhere else):
 {user_preferences.strip()}
 
 """
+            author_lines = "Author name, affiliation and email exactly as given in AUTHOR DETAILS above"
+        else:
+            preferences_block = ""
+            # No author was supplied, so emit neutral placeholders for the
+            # user to fill in - never a name borrowed from a source paper.
+            author_lines = "\n".join(
+                [
+                    "Author Name",
+                    "Affiliation",
+                    "Email",
+                    "(write these three placeholder words literally - no real names)",
+                ]
+            )
 
         prompt = f"""You are an expert university researcher writing a formal IEEE conference paper.
 
@@ -140,6 +156,10 @@ ABSOLUTE CONSTRAINTS:
 - Use formal third-person academic writing throughout
 - Use Roman numerals for all main section headings
 - Do NOT fabricate results, statistics, or claims not present in the source context
+- NEVER copy author names, affiliations, or email addresses from the source context.
+  Those identify the authors of the source papers, not the author of this paper.
+- Write a title that describes this synthesis across the sources. Do NOT reuse or
+  lightly reword the title of any single source paper.
 - Every factual claim must be backed by an inline citation [1], [2], etc.
 - References MUST come ONLY from the given source context
 - Do NOT invent citations
@@ -165,9 +185,7 @@ MANDATORY PAPER STRUCTURE:
 
 Title (Centered, Title Case)
 
-Author Name(s)
-Affiliation
-Email
+{author_lines}
 
 Abstract—
 
@@ -201,6 +219,73 @@ Generate the full IEEE conference-style paper now."""
         return prompt
 
     # ------------------------------------------------------------------
+    # Title page hygiene
+    # ------------------------------------------------------------------
+    @staticmethod
+    def sanitize_title_block(
+        paper_text: str, context_chunks: List[Dict], user_preferences: str = ""
+    ) -> str:
+        """Strip author identities lifted from the source papers.
+
+        The prompt tells the model not to borrow a byline, but a 7B model can
+        ignore that, and the result attributes a machine-written draft to real
+        researchers - complete with their institutional e-mail addresses. This
+        is the backstop: it rewrites the block between the title and the
+        abstract whenever that block carries an e-mail address or a name taken
+        from the retrieved metadata.
+        """
+        if not paper_text:
+            return paper_text
+
+        lines = paper_text.splitlines()
+        # The title page is everything above the abstract.
+        end = next(
+            (i for i, l in enumerate(lines[:15]) if l.strip().lower().startswith("abstract")),
+            None,
+        )
+        if end is None or end < 2:
+            return paper_text
+
+        head = lines[:end]
+        block = "\n".join(head)
+
+        # Names of the people who wrote the sources.
+        source_names: set = set()
+        for c in context_chunks or []:
+            authors = (c.get("metadata", {}) or {}).get("authors") or []
+            if isinstance(authors, str):
+                authors = [a.strip() for a in authors.split(",")]
+            for a in authors:
+                for part in str(a).split():
+                    if len(part) > 2:
+                        source_names.add(part.strip(".,;").lower())
+
+        # Plain addresses, and the braced form title pages use:
+        #   {alice.smith, bob.jones}@university.edu
+        has_email = bool(
+            re.search(r"[\w.+-]+@[\w-]+\.[\w.-]+", block)
+            or re.search(r"\{[^{}\n]*\}@[\w-]+\.[\w.-]+", block)
+        )
+        borrowed = sum(1 for w in re.findall(r"[A-Za-z][A-Za-z-]{2,}", block)
+                       if w.lower() in source_names)
+        if not has_email and borrowed < 2:
+            return paper_text
+
+        logger.warning(
+            "Title block looked borrowed from the sources (email=%s, matched names=%d) - replacing.",
+            has_email, borrowed,
+        )
+
+        # Keep the title line, replace the identity lines.
+        title_line = next((l for l in head if l.strip()), "")
+        if user_preferences and user_preferences.strip():
+            identity = [l.split(":", 1)[-1].strip() for l in user_preferences.strip().splitlines() if l.strip()]
+        else:
+            identity = ["Author Name", "Affiliation", "Email"]
+
+        return "\n".join([title_line, ""] + identity + [""] + lines[end:])
+
+    # ------------------------------------------------------------------
     # Rewrite pass 1 — reduce verbatim overlap with sources
     # ------------------------------------------------------------------
     def rewrite_for_originality(
@@ -224,6 +309,10 @@ RULES:
 - Do NOT invent new facts or references
 - Do NOT change the IEEE section structure
 - Target average sentence similarity ≈ {target_similarity_pct}% (not zero — just not copy-paste)
+- Lead with the synthesis: state what the sources agree on, disagree on, or leave open,
+  in your own words, instead of restating each paper in sequence
+- Any sentence that could be dropped into a source paper unchanged must be rewritten
+- Never reproduce a source's title, byline, affiliation, or e-mail address
 
 QUERY: {query}
 SOURCE TITLES: {context_titles}

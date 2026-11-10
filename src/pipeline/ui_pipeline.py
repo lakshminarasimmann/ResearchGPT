@@ -13,6 +13,7 @@ from src.retrieval.retriever import HybridRetriever
 from src.generation.generator import RAGGenerator
 from src.evaluation.evaluator import Evaluator
 from src.generation.generator import LLMClient
+from src.history.archive import archive_paper
 
 logger = logging.getLogger(__name__)
 
@@ -54,8 +55,8 @@ def run_rag_for_ui_pipeline(
     run_plagiarism_check: bool = False,
     apply_ai_rewrite: bool = False,
     apply_humanize: bool = True,
-    target_similarity_pct: float = 25.0,
-    max_rewrite_passes: int = 1,
+    target_similarity_pct: float = None,
+    max_rewrite_passes: int = None,
     fast_5page_mode: bool = False,
     min_pages: int = 5,
     user_preferences: str = "",
@@ -66,7 +67,13 @@ def run_rag_for_ui_pipeline(
     UI-safe RAG pipeline.  Returns structured output; never calls print() or input().
     """
     start_time = time.perf_counter()
+    started_at = time.time()
     timings: dict = {}
+
+    if target_similarity_pct is None:
+        target_similarity_pct = Config.TARGET_SIMILARITY_PCT
+    if max_rewrite_passes is None:
+        max_rewrite_passes = Config.MAX_REWRITE_PASSES
 
     # ── Cache check ───────────────────────────────────────────────────────────
     ck = _cache_key(topic, retrieval_strategy, fast_mode)
@@ -253,7 +260,19 @@ def run_rag_for_ui_pipeline(
     )
     timings["generation_seconds"] = round(time.perf_counter() - generation_start, 2)
     paper_text = review["paper_text"]
+
+    # Remove any author identity the model lifted from the source papers
+    # before the text is shown, exported or archived.
+    paper_text = rag.sanitize_title_block(paper_text, context, user_preferences)
+
     _cb("generate_done", f"Paper generated ({len(paper_text.split())} words)")
+
+    # Archive the draft as soon as it exists, so a failure in a later stage
+    # (rewrite, evaluation) does not lose the work.
+    archive_paper(topic, {"paper_text": paper_text, "strategy": retrieval_strategy,
+                          "num_papers": len(pdf_files), "retrieved_context": [
+                              {"title": c.get("metadata", {}).get("title", "Unknown")} for c in context
+                          ]}, started_at)
 
     # ── Analysis table (best-effort — failures don't block the paper) ─────────
     _cb("analysis_start", "Building comparative analysis table…")
@@ -271,7 +290,7 @@ def run_rag_for_ui_pipeline(
         plagiarism_report = Evaluator.evaluate_plagiarism_risk(paper_text, context)
 
     if apply_ai_rewrite:
-        safe_passes = max(1, min(int(max_rewrite_passes), 3))
+        safe_passes = max(1, min(int(max_rewrite_passes), 4))
         for _ in range(safe_passes):
             current_similarity = (plagiarism_report or {}).get("overall_similarity_pct", 0.0)
             should_rewrite = (
@@ -418,6 +437,9 @@ def run_rag_for_ui_pipeline(
     }
     if not include_evaluation and result.get("status") == "ok":
         _store_cached(ck, result)
+
+    # Rewrite the archive entry now that scores and timings are known.
+    result["archive_path"] = archive_paper(topic, result, started_at)
     return result
 
 

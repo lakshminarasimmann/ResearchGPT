@@ -252,7 +252,7 @@ SUB-QUESTIONS (one per line):"""
                 )
 
         if not rerank:
-            return candidates[:top_k]
+            return self._diversify(candidates, top_k)
 
         # ---- Cross-encoder re-ranking ----
         logger.info("Re-ranking %d candidates…", len(candidates))
@@ -263,7 +263,53 @@ SUB-QUESTIONS (one per line):"""
         if threshold > 0.0:
             reranked = [c for c in reranked if c.get("rerank_score", 0.0) >= threshold]
 
-        return reranked[:top_k]
+        return self._diversify(reranked, top_k)
+
+    @staticmethod
+    def _diversify(candidates: list, top_k: int, max_per_doc: int = None) -> list:
+        """Take the top_k passages, but not all from the same paper.
+
+        The reranker scores each passage independently, so a single paper that
+        matches the query well can occupy every slot. A draft built from one
+        source has nothing to synthesise across: it paraphrases that paper
+        closely, which shows up as a high similarity score and a literature
+        review citing one work.
+
+        Passages are taken in score order while no document exceeds
+        ``max_per_doc``; if that leaves fewer than ``top_k``, the best of the
+        held-back passages fill the remainder, so this never returns less than
+        the old behaviour would.
+        """
+        if max_per_doc is None:
+            max_per_doc = Config.MAX_CHUNKS_PER_SOURCE
+        if max_per_doc <= 0:
+            return candidates[:top_k]
+
+        def _doc_of(chunk: dict) -> str:
+            meta = chunk.get("metadata", {}) or {}
+            return meta.get("filepath") or meta.get("title") or ""
+
+        selected, overflow = [], []
+        per_doc: dict = {}
+        for c in candidates:
+            doc = _doc_of(c)
+            if per_doc.get(doc, 0) < max_per_doc:
+                per_doc[doc] = per_doc.get(doc, 0) + 1
+                selected.append(c)
+                if len(selected) >= top_k:
+                    break
+            else:
+                overflow.append(c)
+
+        if len(selected) < top_k:
+            selected.extend(overflow[: top_k - len(selected)])
+
+        distinct = len({_doc_of(c) for c in selected})
+        logger.info(
+            "Selected %d passage(s) across %d source paper(s) (cap %d per paper).",
+            len(selected), distinct, max_per_doc,
+        )
+        return selected
 
     _HIGH_VALUE_SECTIONS = frozenset({
         "results", "methodology", "conclusion", "discussion",

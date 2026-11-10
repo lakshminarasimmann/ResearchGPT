@@ -108,6 +108,10 @@ class Config:
     # -- Plagiarism / evaluation ---------------------------------------------
     PLAGIARISM_SENTENCE_THRESHOLD = _env_float("RAG_PLAGIARISM_THRESHOLD", 0.65)
     NGRAM_SIZE = _env_int("RAG_NGRAM_SIZE", 8)
+    TARGET_SIMILARITY_PCT = _env_float("RAG_TARGET_SIMILARITY_PCT", 25.0)
+    # Originality rewrites to attempt while similarity is above target. One
+    # pass is rarely enough to pull a close paraphrase down to target.
+    MAX_REWRITE_PASSES = _env_int("RAG_MAX_REWRITE_PASSES", 2)
 
     # -- Survey settings -----------------------------------------------------
     SURVEY_MAX_PAPERS = _env_int("RAG_SURVEY_MAX_PAPERS", 15)
@@ -117,6 +121,11 @@ class Config:
     SURVEY_EXTRACT_MAX_CHARS = _env_int("RAG_SURVEY_EXTRACT_CHARS", 7000)
 
     # -- Generation context limits -------------------------------------------
+    # Cap on passages taken from any single source paper. Without this, one
+    # well-matching paper can supply every retrieved chunk, leaving the model
+    # nothing to synthesise across - it then paraphrases that one paper closely
+    # and similarity scores climb.
+    MAX_CHUNKS_PER_SOURCE = _env_int("RAG_MAX_CHUNKS_PER_SOURCE", 3)
     MAX_CHUNKS_FAST = _env_int("RAG_MAX_CHUNKS_FAST", 6)
     MAX_CHUNKS_FULL = _env_int("RAG_MAX_CHUNKS_FULL", 8)
     MAX_CHARS_FAST = _env_int("RAG_MAX_CHARS_FAST", 1800)
@@ -144,6 +153,11 @@ class Config:
         if o.strip()
     ]
     JOB_RETENTION_SECONDS = _env_int("RAG_JOB_RETENTION_SECONDS", 7200)
+
+    # -- Archive of generated papers -----------------------------------------
+    # A permanent, readable record of each run, written as it completes.
+    ARCHIVE_ENABLED = _env_bool("RAG_ARCHIVE_ENABLED", True)
+    ARCHIVE_DIR = _env_str("RAG_ARCHIVE_DIR", os.path.join(BASE_DIR, "docs", "runs"))
 
     # -- Logging -------------------------------------------------------------
     LOG_LEVEL = _env_str("RAG_LOG_LEVEL", "INFO")

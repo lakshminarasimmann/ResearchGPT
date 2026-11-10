@@ -267,6 +267,9 @@ RAG_OPENAI_MODEL=gpt-oss-120b
 | `RAG_EMBEDDING_MODEL` | `BAAI/bge-base-en-v1.5` | Sentence-transformer used for embeddings. |
 | `RAG_CROSS_ENCODER_MODEL` | `cross-encoder/ms-marco-MiniLM-L-12-v2` | Reranking model. |
 | `RAG_BM25_ALPHA` | `0.5` | Lexical/dense blend: `0` is pure BM25, `1` pure vector. |
+| `RAG_MAX_CHUNKS_PER_SOURCE` | `3` | Cap on passages taken from any one paper. Prevents a single well-matching paper from supplying the entire context. |
+| `RAG_TARGET_SIMILARITY_PCT` | `25` | Similarity to sources the originality pass aims for. |
+| `RAG_MAX_REWRITE_PASSES` | `2` | Originality rewrites attempted while similarity stays above target. |
 
 ### Server
 
@@ -276,6 +279,8 @@ RAG_OPENAI_MODEL=gpt-oss-120b
 | `RAG_API_PORT` | `8001` | Backend port. |
 | `RAG_CORS_ORIGINS` | Vite dev and preview origins | Comma-separated allowed origins; `*` permits any. |
 | `RAG_JOB_RETENTION_SECONDS` | `7200` | How long finished jobs are retained in memory. |
+| `RAG_ARCHIVE_ENABLED` | `true` | Write a Markdown record of each completed paper. |
+| `RAG_ARCHIVE_DIR` | `docs/runs` | Where those records are written. |
 | `RAG_LOG_LEVEL` | `INFO` | Logging verbosity. |
 
 The frontend resolves its backend address from `VITE_API_URL`, declared in `frontend/.env` for production builds and `frontend/.env.development` for the dev server.
@@ -335,6 +340,22 @@ print(result["faithfulness"], result["relevance"])
 | `GET` | `/api/download` | Retrieve a previously generated file. |
 
 Interactive documentation is served at `http://127.0.0.1:8001/docs`.
+
+---
+
+## Archived runs
+
+Every completed paper is written to [`docs/runs/`](docs/runs/) as the run finishes —
+the draft itself alongside the scores, timings and the sources it was built from.
+Unlike `data/`, which is a local cache, this archive is committed, so the record of
+what the pipeline has produced lives with the repository.
+
+The record is written as soon as a draft exists and rewritten once evaluation
+completes, so a run that fails late still leaves its paper behind. E-mail addresses
+are redacted on the way in: a generated title page is assembled by the model and can
+repeat an address belonging to a real author of a source paper.
+
+Set `RAG_ARCHIVE_ENABLED=false` to turn this off.
 
 ---
 
