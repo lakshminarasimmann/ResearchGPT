@@ -1,170 +1,263 @@
-# 🚀 ResearchGPT - Agentic RAG Pipeline
+# ResearchGPT
 
-> **"One command to convert arXiv chaos into IEEE clarity."**
+Turn a research topic into a **literature survey table** and a **cited, IEEE-style paper**, grounded in real papers pulled from arXiv.
 
-This is not just a search engine. It is an **Agentic RAG (Retrieval-Augmented Generation)** system that acts as an autonomous research assistant. It fetches papers, reads them, thinks about them, and writes a professional literature review with strict citations.
+Runs fully offline against a local **Ollama** model (`mistral:7b` by default) — no API key required.
+
+```
+Topic ──▶ arXiv search ──▶ PDF parse + chunk ──▶ embed (ChromaDB)
+                                                     │
+                       hybrid BM25 + vector search ◀─┘
+                                │
+                   cross-encoder rerank ──▶ LLM drafts the paper
+                                │
+          self-evaluation (faithfulness / relevance / ROUGE-L / similarity)
+                                │
+                    PDF · LaTeX PDF · Word · Excel · CSV
+```
 
 ---
 
-## ⚡ Quick Start (The "One Command" Mode)
+## 1. Requirements
 
-If you just want results, run this. It handles ingestion, indexing, generation, and rigorous evaluation in one go.
+| | |
+|---|---|
+| Python | 3.10+ (tested on 3.13) |
+| Node.js | 18+ (for the web UI) |
+| [Ollama](https://ollama.com) | running locally, with a model pulled |
+| `pdflatex` | *optional* — only for the "LaTeX PDF" export |
+
+---
+
+## 2. Setup
+
+```bash
+pip install -r requirements.txt
+```
+
+```bash
+npm --prefix frontend install
+```
+
+Pull the model (this is the one `.env` is configured for):
+
+```bash
+ollama pull mistral:7b
+```
+
+Configuration lives in [`.env`](.env) — it is already set up for local Ollama. Copy
+[`.env.example`](.env.example) if you ever need to start over. Nothing else needs editing.
+
+---
+
+## 3. Run
+
+Two processes: the API and the web UI.
+
+**Terminal 1 — API** (http://127.0.0.1:8001)
+
+```bash
+python -m uvicorn api.main:app --port 8001
+```
+
+**Terminal 2 — Web UI** (http://localhost:5173)
+
+```bash
+npm --prefix frontend run dev
+```
+
+Then open <http://localhost:5173>. The sidebar shows a live status badge: green means
+the API is up and Ollama is serving the configured model.
+
+Check the backend on its own at any time:
+
+```bash
+curl http://127.0.0.1:8001/api/health
+```
+
+### Command line (no UI)
 
 ```bash
 python main.py run_all --query "Self-Healing Large Language Models"
 ```
 
-**What happens when you run this?**
-1.  **📥 Ingest**: Deletes old data, searches arXiv for "Self-Healing LLMs", downloads the top 3 PDFs.
-2.  **🧠 Index**: Parses PDFs, splits them into semantic chunks, and builds a fresh Vector Database.
-3.  **🔎 Retrieve**: Uses **HyDE** to hallucinate a perfect answer, searches the vector space, and uses a **Cross-Encoder** to re-rank findings.
-4.  **📝 Generate**: Uses **Chain-of-Thought** reasoning to write a grounded review.
-5.  **⚖️ Evaluate**: An LLM Judge reads the review and scores it (1-5) for Faithfulness and Relevance.
-
----
-
-## 🏗️ Advanced Architecture
-
-We have implemented state-of-the-art RAG techniques to ensure high precision:
-
-### 1. 🔮 HyDE (Hypothetical Document Embeddings)
-*   *Problem*: Users ask short questions ("How does LoRA work?"), but papers contain long technical answers. The vectors don't match well.
-*   *Solution*: The system first asks the LLM to **hallucinate** a hypothetical scientific abstract answering the question. It embeds *that* hallucination to find real papers with similar semantic patterns.
-
-### 2. 🎯 Cross-Encoder Re-Ranking
-*   *Problem*: Vector search is fast but "fuzzy". It retrieves top-50 candidates, but many are irrelevant.
-*   *Solution*: We use a **Cross-Encoder (`ms-marco-MiniLM-L-6-v2`)**. It acts as a strict judge, reading the Query and Document *together* and outputting a relevance score. We keep only the Top-5 highest scorers.
-
-### 3. 🧠 Chain-of-Thought (CoT) Generation
-*   *Problem*: LLMs often hallucinate or write generic summaries.
-*   *Solution*: We prompt the LLM to **"Think step-by-step"**:
-    1.  Analyze retrieved context.
-    2.  Identify agreements/disagreements.
-    3.  Formulate a synthesis.
-    4.  Write the review.
-    This intermediate reasoning step drastically improves quality.
-
-### 4. ⚖️ G-Eval (LLM-as-a-Judge)
-*   *Problem*: How do we know if the answer is good? BLEU/ROUGE scores are useless for facts.
-*   *Solution*: We use a separate LLM pass as a "Judge".
-    *   **Faithfulness (1-5)**: "Is every claim in the answer supported by the retrieved text?"
-    *   **Relevance (1-5)**: "Does the answer actually address the user's specific question?"
-
-### 5. 🔄 Autonomous Self-Correction
-*   *Problem*: Sometimes the first retrieval attempt misses context or the generator hallucinates.
-*   *Solution*: The system is **Agentic**. It critiques its own output.
-    *   If score < 4.0: It retries with **Deep Retrieval** (Top-10) or **Unfiltered** (No refinement) strategies.
-    *   It only saves the result when it passes the quality bar.
-
-### 7. 🧩 Sub-Question Decomposition (New)
-*   *Problem*: Complex queries like "Compare X and Y" fail with simple search.
-*   *Solution*: The system breaks the question into:
-    1.  "What is X?"
-    2.  "What is Y?"
-    3.  Retrieves answers for *both* independently.
-    4.  Synthesizes a comparison.
-
----
-
-## 🛠️ Usage Guide (Interactive Mode)
-
-We have replaced the complex CLI flags with a simple **Interactive Menu**.
-
-```bash
-python main.py
-```
-
-**Menu Options:**
-1.  **Run RAG Pipeline**:
-    - Enter a Topic (e.g., "AI in Healthcare")
-    - Select Strategy:
-        - `HyDE`: Best for most questions.
-        - `Decomposition`: Best for "Compare..." or "How does X affect Y?" logic.
-        - `Standard`: Faster, simple vector search.
-2.  **Evaluation Mode**: Run the pipeline and focus on the G-Eval scores.
-3.  **Exit**.
-
-
-1.  **Clone & Install**:
-    ```bash
-    git clone <repo_url>
-    cd rag_new
-    pip install -r requirements.txt
-    ```
-
-2.  **Configure LLM**:
-    *   This system is optimized for **Ollama**.
-    *   Install [Ollama](https://ollama.com).
-    *   Run: `ollama pull mistral`
-    *   (Optional) Use OpenAI by editing `config/config.py`.
-
----
-
-## � CLI Command Reference
-
 | Command | Arguments | Description |
 | :--- | :--- | :--- |
-| `run_all` | `--query "..."` | **Recommended**. Runs the full pipeline from A to Z. |
-| `ingest` | `--query "..." --max 5` | Searches arXiv and downloads PDFs. |
-| `index` | *(none)* | Processes PDFs and builds/resets the index. |
-| `retrieve` | `--query "..."` | Debug mode. Shows HyDE output, candidates, and Re-ranking scores. |
-| `generate` | `--topic "..."` | Generates a review from the current index. |
-| `evaluate` | `--query "..."` | Runs the G-Eval metrics on the current index. |
+| `run_all` | `--query "..."` | Full pipeline: ingest → index → generate → evaluate. |
+| `ingest` | `--query "..." --max 5` | Search arXiv and download PDFs. |
+| `index` | *(none)* | Parse PDFs and rebuild the vector index. |
+| `retrieve` | `--query "..." --k 5` | Debug retrieval: HyDE, candidates, rerank scores. |
+| `generate` | `--topic "..."` | Generate a paper from the current index. |
+| `evaluate` | `--query "..."` | Run the evaluation metrics. |
 
----
+### Legacy Streamlit UI
 
-## 📊 Evaluation & Accuracy
+`ui.py` is the original single-file Streamlit interface, kept for reference. The React
+frontend is the supported UI.
 
-This system uses **G-Eval (LLM-as-a-Judge)** to score performance. Unlike traditional ML where accuracy is simple (True/False), RAG accuracy is nuanced.
-
-### The Scoring Rubric (1-5)
-We use a **Mistral/GPT-4** judge to scrutinize the output:
-
-| Score | Meaning | Action Required |
-| :--- | :--- | :--- |
-| **5/5** | **Perfect**. Fully grounded, answers the specific question. | ✅ Ready for prod. |
-| **4/5** | **Good**. Generally correct but may miss nuance. | ✅ Acceptable. |
-| **3/5** | **Acceptable**. hallucinated minor details or vague. | ⚠️ Improve context. |
-| **1-2/5** | **Failure**. Hallucination or Irrelevant. | ❌ Fix retrieval. |
-
-### How to Calculate "Accuracy"
-To get a single percentage score for your system:
-
-1.  Run `evaluate` or `run_all` on a test set of 10-20 questions.
-2.  Average the **Faithfulness** and **Relevance** scores.
-3.  **Formula**:
-    ```math
-    System Accuracy % = ((Avg_Faithfulness + Avg_Relevance) / 10) * 100
-    ```
-    *Example: Faithfulness 4.5, Relevance 4.5 -> 90% Accuracy.*
-
-### Reading the Logs
-```text
-Faithfulness Score: 5/5
-Reasoning: The answer is entirely derived from the retrieved papers [Author A]...
+```bash
+streamlit run ui.py
 ```
-If **Faithfulness** is low: Your `Ingestion` or `Retrieval` is failing (Garbage In, Garbage Out).
-If **Relevance** is low: Your `Generation` prompt is bad or the `Retrieval` missed the specific angle of the question.
 
 ---
 
-## � Project Structure
+## 4. Configuration
+
+Everything is read from `.env` by [`config/config.py`](config/config.py); every value has a
+working default, so you only set what you want to change.
+
+### LLM provider
+
+| Variable | Default | Notes |
+|---|---|---|
+| `RAG_LLM_PROVIDER` | `ollama` | `ollama` (local) or `openai` (any OpenAI-compatible API) |
+| `RAG_OLLAMA_BASE_URL` | `http://localhost:11434` | Where the Ollama daemon listens |
+| `RAG_OLLAMA_MODEL` | `mistral:7b` | Must match a model from `ollama list` |
+| `RAG_OLLAMA_NUM_CTX` | `16384` | **Important** — see below |
+| `RAG_OLLAMA_KEEP_ALIVE` | `30m` | Keeps the model in memory between calls |
+| `RAG_OLLAMA_TIMEOUT` | `900` | Seconds per request |
+| `RAG_LLM_MAX_TOKENS` | `4096` | Max tokens generated per call |
+| `RAG_LLM_TEMPERATURE` | `0.2` | |
+
+> **Why `num_ctx` matters.** Ollama loads models with a small default context window
+> (4096 tokens). This pipeline builds long prompts containing the retrieved papers, so
+> with the default the model would silently receive only a fraction of its context and
+> write from almost nothing. `RAG_OLLAMA_NUM_CTX=16384` fixes that. Lower it to `8192`
+> if you are short on RAM or VRAM.
+
+To use a remote OpenAI-compatible API instead:
+
+```ini
+RAG_LLM_PROVIDER=openai
+CEREBRAS_API_KEY=your-key
+RAG_OPENAI_BASE_URL=https://api.cerebras.ai/v1
+RAG_OPENAI_MODEL=gpt-oss-120b
+```
+
+### Retrieval & pipeline
+
+| Variable | Default | Notes |
+|---|---|---|
+| `RAG_TOP_K` | `5` | Chunks kept after reranking |
+| `RAG_MAX_PAPERS` | `5` | Papers downloaded per topic |
+| `RAG_SURVEY_DEFAULT_PAPERS` | `10` | Papers in the survey table |
+| `RAG_CHUNK_SIZE` / `RAG_CHUNK_OVERLAP` | `1000` / `350` | |
+| `RAG_EMBEDDING_MODEL` | `BAAI/bge-base-en-v1.5` | |
+| `RAG_CROSS_ENCODER_MODEL` | `cross-encoder/ms-marco-MiniLM-L-12-v2` | Reranker |
+| `RAG_BM25_ALPHA` | `0.5` | 0 = pure BM25, 1 = pure vector |
+
+### Server
+
+| Variable | Default |
+|---|---|
+| `RAG_API_HOST` / `RAG_API_PORT` | `127.0.0.1` / `8001` |
+| `RAG_CORS_ORIGINS` | the Vite dev and preview origins |
+| `RAG_LOG_LEVEL` | `INFO` |
+
+The frontend reads `VITE_API_URL` from `frontend/.env` (production build) and
+`frontend/.env.development` (dev server).
+
+---
+
+## 5. Project layout
 
 ```text
-rag_new/
-├── config/             # Configuration (Models, Top-K, Paths)
-├── data/               # Raw PDF storage & VectorDB
-├── output/             # Where your reviews are saved
+ResearchGPT/
+├── .env                 # active configuration (Ollama + mistral:7b)
+├── .env.example         # template
+├── main.py              # CLI entry point
+├── ui.py                # legacy Streamlit UI
+├── requirements.txt
+│
+├── api/                 # FastAPI backend
+│   ├── main.py          #   routes, health, exports
+│   ├── jobs.py          #   in-memory background job runner
+│   └── schemas.py       #   request models
+│
+├── config/config.py     # every setting, read from .env
+│
 ├── src/
-│   ├── ingestion/      # arXiv Scraper (Auto-cleaning)
-│   ├── processing/     # PDF Parsing & Chunking
-│   ├── embedding/      # Vector Store Logic
-│   ├── retrieval/      # HyDE + Cross-Encoder Logic
-│   ├── generation/     # CoT Prompts & LLM Client
-│   └── evaluation/     # G-Eval Metrics
-└── main.py             # Master CLI Tool
+│   ├── ingestion/       # arXiv search + download
+│   ├── processing/      # PDF parsing + chunking
+│   ├── embedding/       # ChromaDB vector store
+│   ├── retrieval/       # hybrid search, HyDE, reranking
+│   ├── generation/      # llm_client.py (transport) + generator.py (prompts)
+│   ├── evaluation/      # G-Eval, ROUGE-L, similarity
+│   ├── analysis/        # survey table extraction
+│   ├── output_pdf/      # PDF / LaTeX / DOCX writers
+│   ├── history/         # saved results
+│   └── pipeline/        # end-to-end orchestration
+│
+├── frontend/            # React + TypeScript + Vite UI
+│   └── src/
+│       ├── App.tsx      #   shell, sessions, job polling
+│       ├── api.ts       #   typed backend client
+│       ├── components/  #   health badge, progress, landing, theme
+│       ├── index.css    #   design tokens (light + dark)
+│       └── App.css      #   component styles
+│
+├── tests/               # Playwright suites (react/ + legacy Streamlit)
+├── scripts/             # documentation PDF generators
+├── docs/                # DOCUMENTATION.md, paper source, generated PDFs
+│
+├── data/                # downloaded papers, vector DB, history  (git-ignored)
+├── output/              # generated papers                       (git-ignored)
+└── logs/                # rotating log file                      (git-ignored)
 ```
+
+### How the pieces fit
+
+* **`src/generation/llm_client.py`** is the only place that talks to an LLM. It handles
+  both providers, retries, timeouts and the Ollama `num_ctx` / `keep_alive` options, and
+  exposes `LLMClient.health()`, which backs `/api/health`.
+* **`src/generation/generator.py`** builds prompts and post-processes output. It
+  re-exports `LLMClient` so older imports keep working.
+* **`api/jobs.py`** runs long pipeline calls on daemon threads; the frontend polls
+  `/api/jobs/{id}` for progress. Finished jobs are pruned after
+  `RAG_JOB_RETENTION_SECONDS`.
 
 ---
 
-> **Note**: This is an "Industry-Ready" template. In a real deployment, you would replace ChromaDB with Pinecone/Weaviate and deploy the API via FastAPI.
+## 6. Tests
+
+```bash
+npx playwright test --config=playwright.react.config.ts
+```
+
+25 end-to-end tests covering the React UI against a mocked backend — no model or network
+needed. `playwright.config.ts` targets the legacy Streamlit UI instead.
+
+---
+
+## 7. Troubleshooting
+
+| Symptom | Cause / fix |
+|---|---|
+| Sidebar badge says **API offline** | The backend is not running. Start uvicorn (step 3). |
+| Badge is red, "not ready" | Hover it. Usually Ollama is stopped (`ollama serve`) or the model was never pulled (`ollama pull mistral:7b`). |
+| Generation is very slow | A 7B model on CPU is slow; this is expected. Lower `RAG_SURVEY_DEFAULT_PAPERS` and `RAG_TOP_K`, or lower `RAG_OLLAMA_NUM_CTX`. |
+| Paper ignores the retrieved sources | `RAG_OLLAMA_NUM_CTX` is too small for the prompt — raise it. |
+| "LaTeX PDF" export fails | `pdflatex` is not installed. The normal PDF export does not need it. |
+| Out of memory loading the model | Lower `RAG_OLLAMA_NUM_CTX` to `8192`, or use a smaller model. |
+| Word / Excel export fails | `pip install -r requirements.txt` — `python-docx` and `openpyxl` are required. |
+
+---
+
+## 8. How it works
+
+**HyDE** — short questions embed poorly against long technical papers, so the model first
+drafts a hypothetical abstract and *that* is embedded to find real matches.
+
+**Hybrid retrieval** — BM25 (exact terms) and vector search (meaning) are blended with
+`RAG_BM25_ALPHA`, then a cross-encoder rescores the shortlist by reading query and
+passage together.
+
+**Sub-question decomposition** — "compare X and Y" is split into independent retrievals
+per sub-question, then synthesised.
+
+**G-Eval** — a second LLM pass scores the draft 1–5 for *faithfulness* (is every claim
+supported by the retrieved text?) and *relevance* (does it answer the topic?). Both
+scores, and the judge's reasoning, are shown in the UI.
+
+Scores of 4–5 are good; 3 means the context was thin; 1–2 points at a retrieval problem
+rather than a generation one.

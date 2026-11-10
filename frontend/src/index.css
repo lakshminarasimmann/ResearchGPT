@@ -1,0 +1,267 @@
+/* ============================================================================
+   ResearchGPT — design tokens, reset and base typography.
+
+   Everything visual starts here: colours are declared once as tokens, with a
+   light and a dark value, and components only ever reference the tokens.
+   `data-theme` on <html> overrides the OS preference (set by the theme toggle).
+   ========================================================================= */
+
+:root {
+  /* ── Neutral ramp (dark is the default theme) ───────────────────────────── */
+  --bg:            #0b0d12;
+  --bg-sunken:     #080a0e;
+  --surface:       #12151d;
+  --surface-2:     #171b25;
+  --surface-3:     #1d2230;
+  --surface-hover: #212735;
+  --border:        #262c3a;
+  --border-strong: #333b4d;
+
+  --text:          #e8ecf4;
+  --text-muted:    #9aa5b8;
+  --text-subtle:   #6b7689;
+
+  /* ── Accent ─────────────────────────────────────────────────────────────── */
+  --accent:        #7c8cff;
+  --accent-hover:  #8f9cff;
+  --accent-text:   #ffffff;
+  --accent-soft:   rgba(124, 140, 255, 0.14);
+  --accent-ring:   rgba(124, 140, 255, 0.40);
+
+  /* ── Semantic ───────────────────────────────────────────────────────────── */
+  --good:          #3ecf8e;
+  --good-soft:     rgba(62, 207, 142, 0.14);
+  --warn:          #e3b341;
+  --warn-soft:     rgba(227, 179, 65, 0.14);
+  --danger:        #ff6b6b;
+  --danger-soft:   rgba(255, 107, 107, 0.12);
+  --danger-border: rgba(255, 107, 107, 0.45);
+
+  /* ── Elevation ──────────────────────────────────────────────────────────── */
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.3);
+  --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.35);
+  --shadow-lg: 0 18px 48px rgba(0, 0, 0, 0.5);
+
+  /* ── Shape ──────────────────────────────────────────────────────────────── */
+  --r-sm: 6px;
+  --r-md: 9px;
+  --r-lg: 14px;
+  --r-xl: 20px;
+  --r-pill: 999px;
+
+  /* ── Space (4px scale) ──────────────────────────────────────────────────── */
+  --s-1: 4px;
+  --s-2: 8px;
+  --s-3: 12px;
+  --s-4: 16px;
+  --s-5: 20px;
+  --s-6: 24px;
+  --s-8: 32px;
+  --s-10: 40px;
+  --s-12: 48px;
+
+  /* ── Type ───────────────────────────────────────────────────────────────── */
+  --sans: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  --mono: "JetBrains Mono", ui-monospace, "SF Mono", Consolas, "Liberation Mono", monospace;
+  --serif: "Source Serif 4", Georgia, "Times New Roman", serif;
+
+  /* ── Layout ─────────────────────────────────────────────────────────────── */
+  --sidebar-w: 276px;
+  --content-max: 920px;
+  --header-h: 60px;
+
+  --ease: cubic-bezier(0.22, 0.61, 0.36, 1);
+
+  color-scheme: dark;
+}
+
+/* Light theme — applied when the OS asks for it and the user has not chosen. */
+@media (prefers-color-scheme: light) {
+  :root:not([data-theme="dark"]) {
+    --bg:            #f7f8fa;
+    --bg-sunken:     #eef0f4;
+    --surface:       #ffffff;
+    --surface-2:     #f7f8fa;
+    --surface-3:     #eef0f4;
+    --surface-hover: #e9ecf1;
+    --border:        #e1e5ec;
+    --border-strong: #cbd2dd;
+
+    --text:          #101522;
+    --text-muted:    #5b6679;
+    --text-subtle:   #8792a4;
+
+    --accent:        #4f5bd5;
+    --accent-hover:  #4049bd;
+    --accent-soft:   rgba(79, 91, 213, 0.10);
+    --accent-ring:   rgba(79, 91, 213, 0.32);
+
+    --good:          #18794e;
+    --good-soft:     rgba(24, 121, 78, 0.10);
+    --warn:          #9a6700;
+    --warn-soft:     rgba(154, 103, 0, 0.10);
+    --danger:        #c73a3a;
+    --danger-soft:   rgba(199, 58, 58, 0.08);
+    --danger-border: rgba(199, 58, 58, 0.35);
+
+    --shadow-sm: 0 1px 2px rgba(16, 21, 34, 0.06);
+    --shadow-md: 0 4px 12px rgba(16, 21, 34, 0.08);
+    --shadow-lg: 0 18px 48px rgba(16, 21, 34, 0.14);
+
+    color-scheme: light;
+  }
+}
+
+/* Explicit light choice from the toggle. */
+:root[data-theme="light"] {
+  --bg:            #f7f8fa;
+  --bg-sunken:     #eef0f4;
+  --surface:       #ffffff;
+  --surface-2:     #f7f8fa;
+  --surface-3:     #eef0f4;
+  --surface-hover: #e9ecf1;
+  --border:        #e1e5ec;
+  --border-strong: #cbd2dd;
+
+  --text:          #101522;
+  --text-muted:    #5b6679;
+  --text-subtle:   #8792a4;
+
+  --accent:        #4f5bd5;
+  --accent-hover:  #4049bd;
+  --accent-soft:   rgba(79, 91, 213, 0.10);
+  --accent-ring:   rgba(79, 91, 213, 0.32);
+
+  --good:          #18794e;
+  --good-soft:     rgba(24, 121, 78, 0.10);
+  --warn:          #9a6700;
+  --warn-soft:     rgba(154, 103, 0, 0.10);
+  --danger:        #c73a3a;
+  --danger-soft:   rgba(199, 58, 58, 0.08);
+  --danger-border: rgba(199, 58, 58, 0.35);
+
+  --shadow-sm: 0 1px 2px rgba(16, 21, 34, 0.06);
+  --shadow-md: 0 4px 12px rgba(16, 21, 34, 0.08);
+  --shadow-lg: 0 18px 48px rgba(16, 21, 34, 0.14);
+
+  color-scheme: light;
+}
+
+/* ── Reset ─────────────────────────────────────────────────────────────────── */
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--sans);
+  font-size: 14.5px;
+  line-height: 1.55;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
+}
+
+#root {
+  height: 100%;
+  isolation: isolate;
+}
+
+h1,
+h2,
+h3,
+h4 {
+  margin: 0;
+  font-weight: 600;
+  letter-spacing: -0.015em;
+  color: var(--text);
+  line-height: 1.25;
+}
+
+h1 { font-size: 1.15rem; }
+h2 { font-size: 1.05rem; }
+h3 { font-size: 0.95rem; }
+
+p { margin: 0; }
+
+a {
+  color: var(--accent);
+  text-decoration: none;
+}
+a:hover { text-decoration: underline; }
+
+button,
+input,
+select,
+textarea {
+  font: inherit;
+  color: inherit;
+}
+
+button {
+  cursor: pointer;
+  background: none;
+  border: none;
+  padding: 0;
+}
+
+button:disabled {
+  cursor: not-allowed;
+}
+
+code,
+pre {
+  font-family: var(--mono);
+}
+
+/* Visible, consistent keyboard focus everywhere. */
+:where(button, input, select, textarea, a, [tabindex]):focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+/* ── Scrollbars ────────────────────────────────────────────────────────────── */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--border-strong) transparent;
+}
+
+*::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+*::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+*::-webkit-scrollbar-thumb {
+  background: var(--border-strong);
+  border: 3px solid transparent;
+  border-radius: var(--r-pill);
+  background-clip: content-box;
+}
+
+*::-webkit-scrollbar-thumb:hover {
+  background: var(--text-subtle);
+  background-clip: content-box;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
