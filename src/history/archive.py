@@ -81,7 +81,7 @@ def _render(topic: str, result: dict, started_at: float, redactions: int) -> str
         f"| Retrieved passages | {len(context)} |",
         f"| Retrieval strategy | {_fmt(result.get('strategy'))} |",
         f"| Estimated pages | {_fmt(result.get('page_estimate'))} |",
-        f"| Similarity to sources | {_fmt(plag.get('overall_similarity_pct'), '%')} |",
+        f"| Sentences matching a source | {_fmt(plag.get('overall_similarity_pct'), '%')} |",
         f"| 8-gram overlap | {_fmt(plag.get('ngram_overlap_pct'), '%')} |",
         f"| ROUGE-L | {_fmt(rouge.get('avg_rouge_l'))} |",
         f"| Originality rewrites | {_fmt(result.get('ai_rewrite_passes'))} |",

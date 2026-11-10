@@ -7,5 +7,5 @@ Each file records the paper together with the scores, timings and the sources it
 
 | Date | Topic | File |
 |---|---|---|
-| 2026-11-11 | Parameter-efficient fine-tuning of large language models | [2026-11-11-parameter-efficient-fine-tuning-of-large-language-models.md](2026-11-11-parameter-efficient-fine-tuning-of-large-language-models.md) |
 | 2026-11-11 | Hallucination mitigation in RAG | [2026-11-10-hallucination-mitigation-in-rag.md](2026-11-10-hallucination-mitigation-in-rag.md) |
+| 2026-11-11 | Parameter-efficient fine-tuning of large language models | [2026-11-11-parameter-efficient-fine-tuning-of-large-language-models.md](2026-11-11-parameter-efficient-fine-tuning-of-large-language-models.md) |

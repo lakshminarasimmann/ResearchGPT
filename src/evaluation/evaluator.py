@@ -274,11 +274,30 @@ Score: [single digit 1-5]"""
         ngram_overlap_pct = (
             (len(overlap) / len(response_ngrams)) * 100 if response_ngrams else 0.0
         )
-        overall_similarity_pct = float(np.mean(sentence_scores) * 100) if sentence_scores else 0.0
+        # Share of the paper that closely mirrors a source.
+        #
+        # This used to report mean(best_ratio), which cannot be interpreted as a
+        # copying rate: SequenceMatcher compares characters, so two unrelated
+        # sentences of English academic prose still score highly on shared
+        # function words. Measured against these sources, text on an entirely
+        # different subject scores ~36% while sharing no 8-gram at all - so the
+        # 25% target was unreachable and the originality rewrite burned a pass
+        # on every run trying to reach it.
+        #
+        # Counting the sentences that actually cross the flag threshold gives a
+        # number that means something and that reaches 0 for original text.
+        matched = sum(1 for s in sentence_scores if s >= sentence_threshold)
+        overall_similarity_pct = (matched / len(sentence_scores)) * 100 if sentence_scores else 0.0
+        mean_best_match_pct = float(np.mean(sentence_scores) * 100) if sentence_scores else 0.0
         max_sentence_similarity_pct = float(max(sentence_scores) * 100) if sentence_scores else 0.0
 
         return {
             "overall_similarity_pct": round(overall_similarity_pct, 2),
+            "matched_sentences": matched,
+            "total_sentences": len(sentence_scores),
+            # Retained for transparency: the old headline number, which has a
+            # high floor for any same-language prose.
+            "mean_best_match_pct": round(mean_best_match_pct, 2),
             "max_sentence_similarity_pct": round(max_sentence_similarity_pct, 2),
             "ngram_overlap_pct": round(ngram_overlap_pct, 2),
             "flagged_sentences": flagged,

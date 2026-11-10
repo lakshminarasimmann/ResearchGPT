@@ -89,7 +89,12 @@ export interface RetrievedChunk {
 }
 
 export interface PlagiarismReport {
+  /** Share of sentences that closely mirror a source (0 for original text). */
   overall_similarity_pct: number;
+  matched_sentences?: number;
+  total_sentences?: number;
+  /** Mean best character-match. High floor for any prose; kept for context. */
+  mean_best_match_pct?: number;
   max_sentence_similarity_pct: number;
   ngram_overlap_pct: number;
 }

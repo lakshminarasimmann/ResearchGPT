@@ -201,9 +201,15 @@ export default function ResultPanel({
         <Expander label="Plagiarism report">
           <div className="plagiarism-grid">
             <div>
-              <div className="meta-label">Avg Similarity</div>
+              <div className="meta-label">Sentences matching a source</div>
               <div className="meta-value">{result.plagiarism_report.overall_similarity_pct}%</div>
             </div>
+            {result.plagiarism_report.mean_best_match_pct !== undefined && (
+              <div>
+                <div className="meta-label">Mean best match</div>
+                <div className="meta-value">{result.plagiarism_report.mean_best_match_pct}%</div>
+              </div>
+            )}
             <div>
               <div className="meta-label">Max Sentence Sim</div>
               <div className="meta-value">{result.plagiarism_report.max_sentence_similarity_pct}%</div>
@@ -220,7 +226,11 @@ export default function ResultPanel({
             )}
           </div>
           <p className="settings-hint">
-            Similarity is measured against the retrieved source chunks, not the whole web.
+            Measured against the retrieved source passages, not the whole web. “Sentences
+            matching a source” is the share of the paper that closely mirrors one of them —
+            0% for original text. “Mean best match” compares characters, so it stays high
+            (around 35%) even for unrelated prose; the 8-gram overlap is the strictest
+            signal of verbatim reuse.
           </p>
         </Expander>
       )}

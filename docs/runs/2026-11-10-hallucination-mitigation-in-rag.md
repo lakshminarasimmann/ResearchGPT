@@ -10,8 +10,8 @@
 | Retrieved passages | 6 |
 | Retrieval strategy | hyde |
 | Estimated pages | 3.36 |
-| Similarity to sources | 47.22% |
-| 8-gram overlap | 7.19% |
+| Sentences matching a source | 22.22% |
+| 8-gram overlap | 7.04% |
 | ROUGE-L | 0.0795 |
 | Originality rewrites | 1 |
 | Total time | 1006.34s |
