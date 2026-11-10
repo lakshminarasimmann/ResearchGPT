@@ -35,7 +35,8 @@ chroma.sqlite3
 output/
 logs/
 
-# ─── Editors / OS ─────────────────────────────────────────────────────────────
+# ─── Editors / tooling / OS ───────────────────────────────────────────────────
+.claude/
 .vscode/
 .idea/
 .DS_Store

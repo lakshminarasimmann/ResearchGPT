@@ -1,52 +1,54 @@
 /* ============================================================================
    ResearchGPT — design tokens, reset and base typography.
 
-   Everything visual starts here: colours are declared once as tokens, with a
-   light and a dark value, and components only ever reference the tokens.
+   A warm near-black palette: neutrals carry a slight amber cast rather than the
+   usual blue, paired with a terracotta accent. Colours are declared once here;
+   components only ever reference the tokens.
+
    `data-theme` on <html> overrides the OS preference (set by the theme toggle).
    ========================================================================= */
 
 :root {
-  /* ── Neutral ramp (dark is the default theme) ───────────────────────────── */
-  --bg:            #0b0d12;
-  --bg-sunken:     #080a0e;
-  --surface:       #12151d;
-  --surface-2:     #171b25;
-  --surface-3:     #1d2230;
-  --surface-hover: #212735;
-  --border:        #262c3a;
-  --border-strong: #333b4d;
+  /* ── Neutral ramp — warm near-black (dark is the default) ───────────────── */
+  --bg:            #191917;  /* app canvas */
+  --bg-raised:     #1f1e1c;  /* top bar, tab strip */
+  --surface:       #242320;  /* cards */
+  --surface-2:     #2a2926;  /* nested panels, inputs */
+  --surface-3:     #322f2b;  /* table headers, pills */
+  --surface-hover: #35322e;
+  --border:        #322f2b;
+  --border-strong: #45413b;
 
-  --text:          #e8ecf4;
-  --text-muted:    #9aa5b8;
-  --text-subtle:   #6b7689;
+  --text:          #f5f3ee;
+  --text-muted:    #b3afa4;
+  --text-subtle:   #8a857b;
 
-  /* ── Accent ─────────────────────────────────────────────────────────────── */
-  --accent:        #7c8cff;
-  --accent-hover:  #8f9cff;
-  --accent-text:   #ffffff;
-  --accent-soft:   rgba(124, 140, 255, 0.14);
-  --accent-ring:   rgba(124, 140, 255, 0.40);
+  /* ── Accent — terracotta ────────────────────────────────────────────────── */
+  --accent:        #d97757;
+  --accent-hover:  #e3886a;
+  --accent-text:   #1a1613;
+  --accent-soft:   rgba(217, 119, 87, 0.14);
+  --accent-ring:   rgba(217, 119, 87, 0.42);
 
   /* ── Semantic ───────────────────────────────────────────────────────────── */
-  --good:          #3ecf8e;
-  --good-soft:     rgba(62, 207, 142, 0.14);
-  --warn:          #e3b341;
-  --warn-soft:     rgba(227, 179, 65, 0.14);
-  --danger:        #ff6b6b;
-  --danger-soft:   rgba(255, 107, 107, 0.12);
-  --danger-border: rgba(255, 107, 107, 0.45);
+  --good:          #7fb88a;
+  --good-soft:     rgba(127, 184, 138, 0.14);
+  --warn:          #d9a441;
+  --warn-soft:     rgba(217, 164, 65, 0.14);
+  --danger:        #e0806f;
+  --danger-soft:   rgba(224, 128, 111, 0.12);
+  --danger-border: rgba(224, 128, 111, 0.42);
 
   /* ── Elevation ──────────────────────────────────────────────────────────── */
-  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.3);
-  --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.35);
-  --shadow-lg: 0 18px 48px rgba(0, 0, 0, 0.5);
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.38);
+  --shadow-md: 0 6px 16px rgba(0, 0, 0, 0.42);
+  --shadow-lg: 0 20px 52px rgba(0, 0, 0, 0.58);
 
   /* ── Shape ──────────────────────────────────────────────────────────────── */
   --r-sm: 6px;
-  --r-md: 9px;
-  --r-lg: 14px;
-  --r-xl: 20px;
+  --r-md: 8px;
+  --r-lg: 12px;
+  --r-xl: 18px;
   --r-pill: 999px;
 
   /* ── Space (4px scale) ──────────────────────────────────────────────────── */
@@ -66,83 +68,86 @@
   --serif: "Source Serif 4", Georgia, "Times New Roman", serif;
 
   /* ── Layout ─────────────────────────────────────────────────────────────── */
-  --sidebar-w: 276px;
-  --content-max: 920px;
-  --header-h: 60px;
+  --topbar-h: 56px;
+  --tabstrip-h: 42px;
+  --content-max: 1080px;
+  --reading-max: 940px;
 
   --ease: cubic-bezier(0.22, 0.61, 0.36, 1);
 
   color-scheme: dark;
 }
 
-/* Light theme — applied when the OS asks for it and the user has not chosen. */
+/* ── Light theme ───────────────────────────────────────────────────────────── */
+/* Shared by the OS preference and the explicit toggle. */
 @media (prefers-color-scheme: light) {
   :root:not([data-theme="dark"]) {
-    --bg:            #f7f8fa;
-    --bg-sunken:     #eef0f4;
+    --bg:            #f7f5ef;
+    --bg-raised:     #fdfcf9;
     --surface:       #ffffff;
-    --surface-2:     #f7f8fa;
-    --surface-3:     #eef0f4;
-    --surface-hover: #e9ecf1;
-    --border:        #e1e5ec;
-    --border-strong: #cbd2dd;
+    --surface-2:     #faf8f3;
+    --surface-3:     #f0ece3;
+    --surface-hover: #ebe6db;
+    --border:        #e4dfd3;
+    --border-strong: #cfc8b8;
 
-    --text:          #101522;
-    --text-muted:    #5b6679;
-    --text-subtle:   #8792a4;
+    --text:          #22201c;
+    --text-muted:    #5f5a51;
+    --text-subtle:   #8a847a;
 
-    --accent:        #4f5bd5;
-    --accent-hover:  #4049bd;
-    --accent-soft:   rgba(79, 91, 213, 0.10);
-    --accent-ring:   rgba(79, 91, 213, 0.32);
+    --accent:        #bf5e3c;
+    --accent-hover:  #a94f30;
+    --accent-text:   #ffffff;
+    --accent-soft:   rgba(191, 94, 60, 0.10);
+    --accent-ring:   rgba(191, 94, 60, 0.34);
 
-    --good:          #18794e;
-    --good-soft:     rgba(24, 121, 78, 0.10);
-    --warn:          #9a6700;
-    --warn-soft:     rgba(154, 103, 0, 0.10);
-    --danger:        #c73a3a;
-    --danger-soft:   rgba(199, 58, 58, 0.08);
-    --danger-border: rgba(199, 58, 58, 0.35);
+    --good:          #3f7d50;
+    --good-soft:     rgba(63, 125, 80, 0.10);
+    --warn:          #96661a;
+    --warn-soft:     rgba(150, 102, 26, 0.10);
+    --danger:        #b4442f;
+    --danger-soft:   rgba(180, 68, 47, 0.08);
+    --danger-border: rgba(180, 68, 47, 0.34);
 
-    --shadow-sm: 0 1px 2px rgba(16, 21, 34, 0.06);
-    --shadow-md: 0 4px 12px rgba(16, 21, 34, 0.08);
-    --shadow-lg: 0 18px 48px rgba(16, 21, 34, 0.14);
+    --shadow-sm: 0 1px 2px rgba(34, 32, 28, 0.06);
+    --shadow-md: 0 6px 16px rgba(34, 32, 28, 0.09);
+    --shadow-lg: 0 20px 52px rgba(34, 32, 28, 0.16);
 
     color-scheme: light;
   }
 }
 
-/* Explicit light choice from the toggle. */
 :root[data-theme="light"] {
-  --bg:            #f7f8fa;
-  --bg-sunken:     #eef0f4;
+  --bg:            #f7f5ef;
+  --bg-raised:     #fdfcf9;
   --surface:       #ffffff;
-  --surface-2:     #f7f8fa;
-  --surface-3:     #eef0f4;
-  --surface-hover: #e9ecf1;
-  --border:        #e1e5ec;
-  --border-strong: #cbd2dd;
+  --surface-2:     #faf8f3;
+  --surface-3:     #f0ece3;
+  --surface-hover: #ebe6db;
+  --border:        #e4dfd3;
+  --border-strong: #cfc8b8;
 
-  --text:          #101522;
-  --text-muted:    #5b6679;
-  --text-subtle:   #8792a4;
+  --text:          #22201c;
+  --text-muted:    #5f5a51;
+  --text-subtle:   #8a847a;
 
-  --accent:        #4f5bd5;
-  --accent-hover:  #4049bd;
-  --accent-soft:   rgba(79, 91, 213, 0.10);
-  --accent-ring:   rgba(79, 91, 213, 0.32);
+  --accent:        #bf5e3c;
+  --accent-hover:  #a94f30;
+  --accent-text:   #ffffff;
+  --accent-soft:   rgba(191, 94, 60, 0.10);
+  --accent-ring:   rgba(191, 94, 60, 0.34);
 
-  --good:          #18794e;
-  --good-soft:     rgba(24, 121, 78, 0.10);
-  --warn:          #9a6700;
-  --warn-soft:     rgba(154, 103, 0, 0.10);
-  --danger:        #c73a3a;
-  --danger-soft:   rgba(199, 58, 58, 0.08);
-  --danger-border: rgba(199, 58, 58, 0.35);
+  --good:          #3f7d50;
+  --good-soft:     rgba(63, 125, 80, 0.10);
+  --warn:          #96661a;
+  --warn-soft:     rgba(150, 102, 26, 0.10);
+  --danger:        #b4442f;
+  --danger-soft:   rgba(180, 68, 47, 0.08);
+  --danger-border: rgba(180, 68, 47, 0.34);
 
-  --shadow-sm: 0 1px 2px rgba(16, 21, 34, 0.06);
-  --shadow-md: 0 4px 12px rgba(16, 21, 34, 0.08);
-  --shadow-lg: 0 18px 48px rgba(16, 21, 34, 0.14);
+  --shadow-sm: 0 1px 2px rgba(34, 32, 28, 0.06);
+  --shadow-md: 0 6px 16px rgba(34, 32, 28, 0.09);
+  --shadow-lg: 0 20px 52px rgba(34, 32, 28, 0.16);
 
   color-scheme: light;
 }
@@ -182,14 +187,14 @@ h3,
 h4 {
   margin: 0;
   font-weight: 600;
-  letter-spacing: -0.015em;
+  letter-spacing: -0.016em;
   color: var(--text);
   line-height: 1.25;
 }
 
-h1 { font-size: 1.15rem; }
-h2 { font-size: 1.05rem; }
-h3 { font-size: 0.95rem; }
+h1 { font-size: 1.05rem; }
+h2 { font-size: 1rem; }
+h3 { font-size: 0.92rem; }
 
 p { margin: 0; }
 
@@ -223,7 +228,6 @@ pre {
   font-family: var(--mono);
 }
 
-/* Visible, consistent keyboard focus everywhere. */
 :where(button, input, select, textarea, a, [tabindex]):focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 2px;

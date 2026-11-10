@@ -25,6 +25,7 @@ import HealthBadge from "./components/HealthBadge";
 import ThemeToggle from "./components/ThemeToggle";
 import ProgressPanel from "./components/ProgressPanel";
 import Landing from "./components/Landing";
+import Menu from "./components/Menu";
 import "./App.css";
 
 interface ChatSession {
@@ -302,91 +303,63 @@ export default function App() {
   );
 
   return (
-    <div className="layout">
-      <aside className="sidebar">
-        <div className="brand">
-          <div className="brand-mark" aria-hidden="true">
-            R
+    <div className="app">
+      {/* ── Top app bar ──────────────────────────────────────────────── */}
+      <header className="topbar">
+        <div className="topbar-inner">
+          <div className="brand">
+            <div className="brand-mark" aria-hidden="true">
+              R
+            </div>
+            <h1 className="brand-name">ResearchGPT</h1>
           </div>
-          <div className="brand-text">
-            <div className="brand-name">ResearchGPT</div>
-            <div className="brand-sub">arXiv → IEEE</div>
-          </div>
-        </div>
 
-        <button className="new-btn" onClick={newChat}>
-          + New Research
-        </button>
+          <nav className="topnav" aria-label="Main">
+            <button className="new-btn" onClick={newChat}>
+              + New Research
+            </button>
 
-        <div className="sidebar-scroll">
-          <div>
-            <div className="sidebar-label">Sessions</div>
-            <div className="chat-tabs">
-              {chats
-                .slice()
-                .reverse()
-                .map((c) => (
-                  <div
-                    key={c.id}
-                    className={`chat-tab ${c.id === activeChatId ? "active" : ""}`}
-                    onClick={() => setActiveChatId(c.id)}
-                  >
-                    <div className="chat-tab-topic">{c.topic || "New chat"}</div>
-                    {c.running && (
-                      <span className="chat-tab-spinner" title="Running">
-                        ●
-                      </span>
-                    )}
-                    {chats.length > 1 && (
-                      <button
-                        className="history-delete"
-                        onClick={(e) => closeChat(c.id, e)}
-                        title="Close session"
-                        aria-label="Close session"
-                      >
-                        ✕
-                      </button>
-                    )}
+            <Menu label="History" count={history.length}>
+              {(close) => (
+                <>
+                  <div className="menu-heading">
+                    <span>Saved papers</span>
+                    <span>{history.length}</span>
                   </div>
-                ))}
-            </div>
-          </div>
+                  {history.length === 0 ? (
+                    <div className="menu-empty">Papers you generate are saved here.</div>
+                  ) : (
+                    <div className="history-list">
+                      {history.map((h) => (
+                        <div
+                          key={h.fname}
+                          className="history-item"
+                          onClick={() => {
+                            openHistoryItem(h.fname);
+                            close();
+                          }}
+                        >
+                          <div className="history-topic">{h.topic}</div>
+                          <span className="history-meta">~{h.page_estimate}p</span>
+                          <button
+                            className="history-delete"
+                            onClick={(e) => removeHistoryItem(h.fname, e)}
+                            title="Delete from history"
+                            aria-label="Delete from history"
+                          >
+                            ✕
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </>
+              )}
+            </Menu>
+          </nav>
 
-          <div className="sidebar-divider" />
-
-          <div>
-            <div className="sidebar-label">History</div>
-            <div className="history-list">
-              {history.map((h) => (
-                <div key={h.fname} className="history-item" onClick={() => openHistoryItem(h.fname)}>
-                  <div className="history-topic">{h.topic}</div>
-                  <button
-                    className="history-delete"
-                    onClick={(e) => removeHistoryItem(h.fname, e)}
-                    title="Delete from history"
-                    aria-label="Delete from history"
-                  >
-                    ✕
-                  </button>
-                </div>
-              ))}
-            </div>
-            {history.length === 0 && (
-              <div className="sidebar-empty">Saved papers will appear here.</div>
-            )}
-          </div>
-        </div>
-
-        <div className="sidebar-footer">
-          <HealthBadge />
-        </div>
-      </aside>
-
-      <main className="main">
-        <div className="main-header">
-          <h1>ResearchGPT</h1>
-          {active.topic && <div className="header-topic">{active.topic}</div>}
-          <div className="header-actions">
+          <div className="topbar-right">
+            <HealthBadge />
             <ThemeToggle />
             <button
               className="settings-gear"
@@ -398,90 +371,134 @@ export default function App() {
             </button>
           </div>
         </div>
+      </header>
 
-        <div className="main-body">
-          <div className="content">
-            {showSettings && (
-              <SettingsPanel
-                settings={settings}
-                onChange={setSettings}
-                onClose={() => setShowSettings(false)}
-              />
-            )}
-
-            {showComposer && (
-              <Landing
-                composer={composer}
-                showIntro={showIntro}
-                onPickExample={(t) => {
-                  setTopicInput(t);
-                  runGeneration(active.id, t);
-                }}
-              />
-            )}
-
-            {active.phase === "survey" && active.surveyJob && active.surveyJob.status === "running" && (
-              <ProgressPanel
-                title="Running literature survey…"
-                steps={active.surveyJob.progress}
-                fallback="Searching arXiv…"
-                hint="Each paper is downloaded and summarised by the local model, so this step scales with the number of papers."
-              />
-            )}
-
-            {active.surveyJob && active.surveyJob.status === "error" && (
-              <div className="error-panel">Survey error: {active.surveyJob.error}</div>
-            )}
-
-            {active.surveyResult && active.surveyResult.rows.length > 0 && (
-              <SurveyPanel
-                rows={active.surveyResult.rows}
-                topic={active.topic}
-                surveyPaperText={active.surveyResult.survey_paper_text}
-                pdfPath={active.surveyResult.pdf_path}
-              />
-            )}
-
-            {active.phase === "generate" && active.job && active.job.status === "running" && (
-              <ProgressPanel
-                title="Writing the paper…"
-                steps={active.job.progress}
-                hint="Retrieval, drafting, an originality pass and self-evaluation all run in sequence. On a local 7B model expect several minutes."
-              />
-            )}
-
-            {active.job && active.job.status === "error" && (
-              <div className="error-panel">Error: {active.job.error}</div>
-            )}
-
-            {active.result && (
-              <div className="result-panel">
-                <ResultPanel
-                  result={active.result}
-                  topic={active.topic}
-                  onPaperTextChange={(text) =>
-                    updateChat(active.id, { result: { ...active.result!, paper_text: text } })
-                  }
-                />
-
-                <div className="refine-row">
-                  <input
-                    className="topic-input"
-                    placeholder="Refine the paper — e.g. 'add more on limitations'…"
-                    value={instruction}
-                    onChange={(e) => setInstruction(e.target.value)}
-                    onKeyDown={(e) => e.key === "Enter" && applyRefine()}
-                    disabled={refining}
-                    aria-label="Refinement instruction"
-                  />
-                  <button onClick={applyRefine} disabled={refining || !instruction.trim()}>
-                    {refining ? "Refining…" : "Apply"}
-                  </button>
+      {/* ── Session tabs ─────────────────────────────────────────────── */}
+      <div className="tabstrip">
+        <div className="tabstrip-inner">
+          <div className="chat-tabs">
+            {chats
+              .slice()
+              .reverse()
+              .map((c) => (
+                <div
+                  key={c.id}
+                  className={`chat-tab ${c.id === activeChatId ? "active" : ""}`}
+                  onClick={() => setActiveChatId(c.id)}
+                  title={c.topic || "New chat"}
+                >
+                  <div className="chat-tab-topic">{c.topic || "New chat"}</div>
+                  {c.running && (
+                    <span className="chat-tab-spinner" title="Running">
+                      ●
+                    </span>
+                  )}
+                  {chats.length > 1 && (
+                    <button
+                      className="history-delete"
+                      onClick={(e) => closeChat(c.id, e)}
+                      title="Close session"
+                      aria-label="Close session"
+                    >
+                      ✕
+                    </button>
+                  )}
                 </div>
-                {refineError && <div className="error-panel">Refine error: {refineError}</div>}
-              </div>
-            )}
+              ))}
           </div>
+        </div>
+      </div>
+
+      {/* ── Content ──────────────────────────────────────────────────── */}
+      <main className="main-body">
+        <div className="content">
+          {showSettings && (
+            <SettingsPanel
+              settings={settings}
+              onChange={setSettings}
+              onClose={() => setShowSettings(false)}
+            />
+          )}
+
+          {showComposer && (
+            <Landing
+              composer={composer}
+              showIntro={showIntro}
+              onPickExample={(t) => {
+                setTopicInput(t);
+                runGeneration(active.id, t);
+              }}
+            />
+          )}
+
+          {active.topic && !showIntro && (
+            <div className="result-header">
+              <span className="result-header-label">Topic</span>
+              <h2>{active.topic}</h2>
+            </div>
+          )}
+
+          {active.phase === "survey" && active.surveyJob && active.surveyJob.status === "running" && (
+            <ProgressPanel
+              title="Running literature survey…"
+              steps={active.surveyJob.progress}
+              fallback="Searching arXiv…"
+              hint="Each paper is downloaded and summarised by the local model, so this step scales with the number of papers."
+            />
+          )}
+
+          {active.surveyJob && active.surveyJob.status === "error" && (
+            <div className="error-panel">Survey error: {active.surveyJob.error}</div>
+          )}
+
+          {active.surveyResult && active.surveyResult.rows.length > 0 && (
+            <SurveyPanel
+              rows={active.surveyResult.rows}
+              topic={active.topic}
+              surveyPaperText={active.surveyResult.survey_paper_text}
+              pdfPath={active.surveyResult.pdf_path}
+            />
+          )}
+
+          {active.phase === "generate" && active.job && active.job.status === "running" && (
+            <ProgressPanel
+              title="Writing the paper…"
+              steps={active.job.progress}
+              hint="Retrieval, drafting, an originality pass and self-evaluation all run in sequence. On a local 7B model expect several minutes."
+            />
+          )}
+
+          {active.job && active.job.status === "error" && (
+            <div className="error-panel">Error: {active.job.error}</div>
+          )}
+
+          {active.result && (
+            <div className="result-panel">
+              <ResultPanel
+                result={active.result}
+                topic={active.topic}
+                onPaperTextChange={(text) =>
+                  updateChat(active.id, { result: { ...active.result!, paper_text: text } })
+                }
+              />
+
+              <div className="refine-row">
+                <input
+                  className="topic-input"
+                  placeholder="Refine the paper — e.g. 'add more on limitations'…"
+                  value={instruction}
+                  onChange={(e) => setInstruction(e.target.value)}
+                  onKeyDown={(e) => e.key === "Enter" && applyRefine()}
+                  disabled={refining}
+                  aria-label="Refinement instruction"
+                />
+                <button onClick={applyRefine} disabled={refining || !instruction.trim()}>
+                  {refining ? "Refining…" : "Apply"}
+                </button>
+              </div>
+              {refineError && <div className="error-panel">Refine error: {refineError}</div>}
+            </div>
+          )}
         </div>
       </main>
     </div>

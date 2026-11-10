@@ -133,13 +133,13 @@ export default function ResultPanel({
         {result.humanize_applied && <div className="meta-item">humanized</div>}
         <div className="export-buttons">
           <button onClick={downloadDocx} disabled={busy === "docx"}>
-            {busy === "docx" ? "Preparing…" : "⬇ Word (.docx)"}
+            {busy === "docx" ? "Preparing…" : "↓ Word (.docx)"}
           </button>
           <button onClick={() => downloadPdf(false)} disabled={busy === "pdf"}>
-            {busy === "pdf" ? "Preparing…" : "⬇ PDF"}
+            {busy === "pdf" ? "Preparing…" : "↓ PDF"}
           </button>
           <button onClick={() => downloadPdf(true)} disabled={busy === "latex"}>
-            {busy === "latex" ? "Preparing…" : "⬇ LaTeX PDF"}
+            {busy === "latex" ? "Preparing…" : "↓ LaTeX PDF"}
           </button>
         </div>
       </div>
@@ -150,7 +150,7 @@ export default function ResultPanel({
         <div className="warning-banner">
           <span>Low faithfulness score — the paper may cite sources loosely.</span>
           <button onClick={runFixCitations} disabled={fixingCitations}>
-            {fixingCitations ? "Fixing…" : "🔧 Fix Citations"}
+            {fixingCitations ? "Fixing…" : "Fix Citations"}
           </button>
           <button className="banner-dismiss" onClick={() => setBannerDismissed(true)} aria-label="Dismiss">
             ✕
@@ -162,7 +162,7 @@ export default function ResultPanel({
 
       <div className="panel-row">
         <button className="fix-citations-btn" onClick={runFixCitations} disabled={fixingCitations}>
-          {fixingCitations ? "Fixing…" : "🔧 Fix Citations (rebuild from source metadata)"}
+          {fixingCitations ? "Fixing…" : "Fix Citations (rebuild from source metadata)"}
         </button>
       </div>
 
@@ -229,7 +229,7 @@ export default function ResultPanel({
         <Expander label="Comparative analysis table">
           <div className="panel-row">
             <button onClick={downloadAnalysisXlsx} disabled={busy === "xlsx"}>
-              {busy === "xlsx" ? "Preparing…" : "⬇ Download Excel"}
+              {busy === "xlsx" ? "Preparing…" : "↓ Download Excel"}
             </button>
           </div>
           <div className="table-scroll">

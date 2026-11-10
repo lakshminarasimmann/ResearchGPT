@@ -5,6 +5,13 @@ import { mockBackend, makeResult, makeSurveyResult } from './mockApi';
 const topicInput = (page: Page) => page.getByPlaceholder('Enter a research topic…');
 const generateBtn = (page: Page) => page.getByRole('button', { name: 'Generate', exact: true });
 
+// History moved from the old sidebar into a dropdown in the top bar, so it has
+// to be opened before its rows can be read or clicked.
+async function openHistoryMenu(page: Page) {
+  await page.getByRole('button', { name: /^History/ }).click();
+  await expect(page.locator('.menu-panel')).toBeVisible();
+}
+
 async function generate(page: Page, topic: string) {
   await topicInput(page).fill(topic);
   await generateBtn(page).click();
@@ -28,6 +35,7 @@ test.describe('empty state', () => {
       history: [{ topic: 'Graph neural networks', saved_at: 1, fname: 'gnn.json', page_estimate: 4, strategy: 'auto' }],
     });
     await page.goto('/');
+    await openHistoryMenu(page);
     await expect(page.locator('.history-item')).toHaveText(/Graph neural networks/);
   });
 });
@@ -133,6 +141,7 @@ test.describe('generation flow', () => {
     // Saved + history refreshed
     await expect.poll(() => api.bodiesFor('POST', '/api/history/save').length).toBe(1);
     expect(api.bodiesFor('POST', '/api/history/save')[0].topic).toBe('vision transformers');
+    await openHistoryMenu(page);
     await expect(page.locator('.history-item')).toHaveText(/vision transformers/);
   });
 
@@ -339,7 +348,7 @@ test.describe('result panel', () => {
     const api = await openResult(page);
     const cases: Array<[RegExp, string]> = [
       [/Word \(\.docx\)/, 'Large_Language_Models_for_Code.docx'],
-      [/^⬇ PDF$/, 'Large_Language_Models_for_Code.pdf'],
+      [/^↓ PDF$/, 'Large_Language_Models_for_Code.pdf'],
       [/LaTeX PDF/, 'Large_Language_Models_for_Code_latex.pdf'],
     ];
     for (const [name, file] of cases) {
@@ -382,7 +391,7 @@ test.describe('survey exports', () => {
     await expect(survey).toBeVisible({ timeout: 10_000 });
 
     const csvDl = page.waitForEvent('download');
-    await survey.getByRole('button', { name: '⬇ CSV' }).click();
+    await survey.getByRole('button', { name: '↓ CSV' }).click();
     const csv = await csvDl;
     expect(csv.suggestedFilename()).toBe('survey_speech_recognition.csv');
     const csvText = await readFile(await csv.path(), 'utf8');
@@ -390,9 +399,9 @@ test.describe('survey exports', () => {
     expect(csvText).toContain('"Attention Is All You Need"');
 
     const exports: Array<[string, string]> = [
-      ['⬇ Excel', 'survey_speech_recognition.xlsx'],
-      ['⬇ Word (.docx)', 'survey_speech_recognition.docx'],
-      ['⬇ PDF (IEEE)', 'survey_speech_recognition_ieee.pdf'],
+      ['↓ Excel', 'survey_speech_recognition.xlsx'],
+      ['↓ Word (.docx)', 'survey_speech_recognition.docx'],
+      ['↓ PDF (IEEE)', 'survey_speech_recognition_ieee.pdf'],
     ];
     for (const [name, file] of exports) {
       const dl = page.waitForEvent('download');
@@ -433,10 +442,14 @@ test.describe('chats and history', () => {
       historyItems: { 'gnn.json': { ...makeResult({ paper_text: 'GNN PAPER' }), topic: 'Graph neural networks' } },
     });
     await page.goto('/');
+    await openHistoryMenu(page);
     await page.locator('.history-item', { hasText: 'Graph neural networks' }).click();
+    // Picking an entry closes the menu and opens it as a session.
+    await expect(page.locator('.menu-panel')).toBeHidden();
     await expect(page.locator('.result-panel .paper-text')).toHaveText('GNN PAPER');
     await expect(page.locator('.chat-tab.active')).toHaveText(/Graph neural networks/);
 
+    await openHistoryMenu(page);
     await page.locator('.history-item .history-delete').click();
     await expect(page.locator('.history-item')).toHaveCount(0);
     expect(api.requests.some((r) => r.method === 'DELETE' && r.path === '/api/history/gnn.json')).toBe(true);

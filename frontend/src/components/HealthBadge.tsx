@@ -41,9 +41,7 @@ export default function HealthBadge() {
     return (
       <div className="health-badge health-loading" title="Checking the backend…">
         <span className="health-dot" />
-        <span className="health-text">
-          <span className="health-provider">Checking backend…</span>
-        </span>
+        <span className="health-model">checking…</span>
       </div>
     );
   }
@@ -55,10 +53,7 @@ export default function HealthBadge() {
         title="The API did not respond. Start it with: python -m uvicorn api.main:app --port 8001"
       >
         <span className="health-dot" />
-        <span className="health-text">
-          <span className="health-model">API offline</span>
-          <span className="health-provider">Backend not reachable</span>
-        </span>
+        <span className="health-model">API offline</span>
       </div>
     );
   }
@@ -70,11 +65,9 @@ export default function HealthBadge() {
       title={llm.detail}
     >
       <span className="health-dot" />
-      <span className="health-text">
-        <span className="health-model">{llm.model}</span>
-        <span className="health-provider">
-          {llm.ready ? `via ${llm.provider}` : "not ready — hover for details"}
-        </span>
+      <span className="health-model">{llm.model}</span>
+      <span className="health-provider">
+        {llm.ready ? llm.provider : "not ready"}
       </span>
     </div>
   );

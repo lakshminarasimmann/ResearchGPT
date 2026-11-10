@@ -1,131 +1,203 @@
 # ResearchGPT
 
-Turn a research topic into a **literature survey table** and a **cited, IEEE-style paper**, grounded in real papers pulled from arXiv.
+**A retrieval-augmented research assistant that turns a topic into a literature survey and a cited, IEEE-style paper.**
 
-Runs fully offline against a local **Ollama** model (`mistral:7b` by default) — no API key required.
+ResearchGPT searches arXiv for relevant work, indexes the full text of each paper, retrieves the passages that matter, and drafts a structured paper grounded in what it found — then scores its own output for faithfulness and relevance. It runs entirely on your machine against a local [Ollama](https://ollama.com) model; no API key and no data leaving the host.
 
-```
-Topic ──▶ arXiv search ──▶ PDF parse + chunk ──▶ embed (ChromaDB)
-                                                     │
-                       hybrid BM25 + vector search ◀─┘
-                                │
-                   cross-encoder rerank ──▶ LLM drafts the paper
-                                │
-          self-evaluation (faithfulness / relevance / ROUGE-L / similarity)
-                                │
-                    PDF · LaTeX PDF · Word · Excel · CSV
-```
+<p>
+  <img alt="Python 3.10+" src="https://img.shields.io/badge/python-3.10%2B-3776ab?logo=python&logoColor=white">
+  <img alt="React 19" src="https://img.shields.io/badge/react-19-61dafb?logo=react&logoColor=black">
+  <img alt="FastAPI" src="https://img.shields.io/badge/fastapi-0.111%2B-009688?logo=fastapi&logoColor=white">
+  <img alt="Ollama" src="https://img.shields.io/badge/ollama-mistral%3A7b-000000?logo=ollama&logoColor=white">
+</p>
 
 ---
 
-## 1. Requirements
+## Table of contents
 
-| | |
+- [Overview](#overview)
+- [Capabilities](#capabilities)
+- [Architecture](#architecture)
+- [Requirements](#requirements)
+- [Installation](#installation)
+- [Running the application](#running-the-application)
+- [Configuration](#configuration)
+- [Command-line interface](#command-line-interface)
+- [HTTP API](#http-api)
+- [Project structure](#project-structure)
+- [Testing](#testing)
+- [Troubleshooting](#troubleshooting)
+- [How it works](#how-it-works)
+
+---
+
+## Overview
+
+Writing a literature review means finding the relevant papers, reading them, extracting what each one contributes, and synthesising the result into prose that cites its sources. ResearchGPT automates the mechanical parts of that loop while keeping the output traceable: every generated claim is produced from retrieved passages that remain inspectable in the interface.
+
+Given a topic, the system will:
+
+1. Search arXiv and download the most relevant papers.
+2. Parse, chunk and embed them into a local vector store.
+3. Retrieve the passages most relevant to the topic using hybrid search with cross-encoder reranking.
+4. Draft an IEEE-structured paper from those passages.
+5. Evaluate the draft for faithfulness, relevance, lexical overlap and source similarity.
+6. Export the result as PDF, LaTeX PDF, Word, Excel or CSV.
+
+---
+
+## Capabilities
+
+### Retrieval
+
+| Capability | Description |
 |---|---|
-| Python | 3.10+ (tested on 3.13) |
-| Node.js | 18+ (for the web UI) |
-| [Ollama](https://ollama.com) | running locally, with a model pulled |
-| `pdflatex` | *optional* — only for the "LaTeX PDF" export |
+| **Hybrid search** | BM25 lexical matching blended with dense vector similarity; the mix is tunable per strategy. |
+| **HyDE** | Generates a hypothetical abstract for the query and embeds *that*, improving recall for short questions against long technical text. |
+| **Sub-question decomposition** | Splits comparative queries ("compare X and Y") into independent retrievals, then synthesises across them. |
+| **Cross-encoder reranking** | Rescores the shortlist by reading query and passage together, rather than comparing embeddings. |
+
+### Generation and review
+
+| Capability | Description |
+|---|---|
+| **Grounded drafting** | Produces IEEE-sectioned prose constrained to the retrieved context. |
+| **Citation repair** | Rebuilds citations from stored source metadata when the model cites loosely. |
+| **Originality pass** | Rewrites passages that overlap their sources too closely, re-measuring after each attempt. |
+| **Iterative refinement** | Applies free-text instructions ("expand the limitations section") to an existing draft. |
+| **Self-evaluation** | Scores faithfulness and relevance 1–5 with written reasoning, plus ROUGE-L and n-gram similarity. |
+
+### Interface
+
+A React single-page application with a horizontal command bar, parallel research sessions as tabs, live job progress, a saved-paper history, and light and dark themes. A status indicator reports whether the backend and the configured model are reachable before a long job is started.
+
+A legacy Streamlit interface is retained as `ui.py` for reference.
 
 ---
 
-## 2. Setup
+## Architecture
+
+```
+                          ┌──────────────────────────┐
+   Research topic ───────▶│  Ingestion               │  arXiv API → PDF download
+                          └────────────┬─────────────┘
+                                       ▼
+                          ┌──────────────────────────┐
+                          │  Processing              │  PyMuPDF parse → chunk
+                          └────────────┬─────────────┘
+                                       ▼
+                          ┌──────────────────────────┐
+                          │  Embedding               │  BGE embeddings → ChromaDB
+                          └────────────┬─────────────┘
+                                       ▼
+                          ┌──────────────────────────┐
+                          │  Retrieval               │  BM25 + vector → rerank
+                          └────────────┬─────────────┘
+                                       ▼
+                          ┌──────────────────────────┐
+                          │  Generation              │  Ollama / OpenAI-compatible
+                          └────────────┬─────────────┘
+                                       ▼
+                          ┌──────────────────────────┐
+                          │  Evaluation              │  G-Eval, ROUGE-L, similarity
+                          └────────────┬─────────────┘
+                                       ▼
+                             PDF · LaTeX · DOCX · XLSX · CSV
+```
+
+The React client talks to a FastAPI backend. Long-running pipeline calls are dispatched to background threads and surfaced through a polled job API, so the interface stays responsive during multi-minute generations.
+
+---
+
+## Requirements
+
+| Component | Version | Required |
+|---|---|---|
+| Python | 3.10 or later (developed on 3.13) | Yes |
+| Node.js | 18 or later | Yes, for the web interface |
+| [Ollama](https://ollama.com) | any recent release | Yes, when using the default local provider |
+| `pdflatex` | TeX Live or MiKTeX | Optional — only for the LaTeX PDF export |
+
+Roughly 6 GB of free memory is recommended: the quantised 7B model occupies about 4.4 GB, with the remainder going to the embedding and reranking models.
+
+---
+
+## Installation
+
+**1. Install Python dependencies**
 
 ```bash
 pip install -r requirements.txt
 ```
 
+**2. Install frontend dependencies**
+
 ```bash
 npm --prefix frontend install
 ```
 
-Pull the model (this is the one `.env` is configured for):
+**3. Pull the language model**
 
 ```bash
 ollama pull mistral:7b
 ```
 
-Configuration lives in [`.env`](.env) — it is already set up for local Ollama. Copy
-[`.env.example`](.env.example) if you ever need to start over. Nothing else needs editing.
+Configuration is read from `.env` in the project root, which ships preconfigured for a local Ollama setup. Use `.env.example` as a reference when changing providers.
 
 ---
 
-## 3. Run
+## Running the application
 
-Two processes: the API and the web UI.
+The application consists of two processes.
 
-**Terminal 1 — API** (http://127.0.0.1:8001)
+**Backend** — http://127.0.0.1:8001
 
 ```bash
 python -m uvicorn api.main:app --port 8001
 ```
 
-**Terminal 2 — Web UI** (http://localhost:5173)
+**Frontend** — http://localhost:5173
 
 ```bash
 npm --prefix frontend run dev
 ```
 
-Then open <http://localhost:5173>. The sidebar shows a live status badge: green means
-the API is up and Ollama is serving the configured model.
+On Windows, `start.ps1` performs a preflight check against Ollama and launches both processes:
 
-Check the backend on its own at any time:
+```powershell
+.\start.ps1
+```
+
+Confirm the backend independently at any time:
 
 ```bash
 curl http://127.0.0.1:8001/api/health
 ```
 
-### Command line (no UI)
-
-```bash
-python main.py run_all --query "Self-Healing Large Language Models"
-```
-
-| Command | Arguments | Description |
-| :--- | :--- | :--- |
-| `run_all` | `--query "..."` | Full pipeline: ingest → index → generate → evaluate. |
-| `ingest` | `--query "..." --max 5` | Search arXiv and download PDFs. |
-| `index` | *(none)* | Parse PDFs and rebuild the vector index. |
-| `retrieve` | `--query "..." --k 5` | Debug retrieval: HyDE, candidates, rerank scores. |
-| `generate` | `--topic "..."` | Generate a paper from the current index. |
-| `evaluate` | `--query "..."` | Run the evaluation metrics. |
-
-### Legacy Streamlit UI
-
-`ui.py` is the original single-file Streamlit interface, kept for reference. The React
-frontend is the supported UI.
-
-```bash
-streamlit run ui.py
-```
+A healthy response reports `"status": "ok"` and the model currently being served.
 
 ---
 
-## 4. Configuration
+## Configuration
 
-Everything is read from `.env` by [`config/config.py`](config/config.py); every value has a
-working default, so you only set what you want to change.
+All settings are resolved in `config/config.py` from environment variables, which are loaded from `.env`. Every setting has a working default, so only overrides need to be declared.
 
-### LLM provider
+### Language model
 
-| Variable | Default | Notes |
+| Variable | Default | Description |
 |---|---|---|
-| `RAG_LLM_PROVIDER` | `ollama` | `ollama` (local) or `openai` (any OpenAI-compatible API) |
-| `RAG_OLLAMA_BASE_URL` | `http://localhost:11434` | Where the Ollama daemon listens |
-| `RAG_OLLAMA_MODEL` | `mistral:7b` | Must match a model from `ollama list` |
-| `RAG_OLLAMA_NUM_CTX` | `16384` | **Important** — see below |
-| `RAG_OLLAMA_KEEP_ALIVE` | `30m` | Keeps the model in memory between calls |
-| `RAG_OLLAMA_TIMEOUT` | `900` | Seconds per request |
-| `RAG_LLM_MAX_TOKENS` | `4096` | Max tokens generated per call |
-| `RAG_LLM_TEMPERATURE` | `0.2` | |
+| `RAG_LLM_PROVIDER` | `ollama` | `ollama` for local inference, `openai` for an OpenAI-compatible endpoint. |
+| `RAG_OLLAMA_BASE_URL` | `http://localhost:11434` | Address of the Ollama daemon. |
+| `RAG_OLLAMA_MODEL` | `mistral:7b` | Must correspond to an entry in `ollama list`. |
+| `RAG_OLLAMA_NUM_CTX` | `16384` | Context window the model is loaded with. See the note below. |
+| `RAG_OLLAMA_KEEP_ALIVE` | `30m` | How long the model stays resident between requests. |
+| `RAG_OLLAMA_TIMEOUT` | `900` | Per-request timeout in seconds. |
+| `RAG_LLM_MAX_TOKENS` | `4096` | Maximum tokens generated per call. |
+| `RAG_LLM_TEMPERATURE` | `0.2` | Sampling temperature. |
 
-> **Why `num_ctx` matters.** Ollama loads models with a small default context window
-> (4096 tokens). This pipeline builds long prompts containing the retrieved papers, so
-> with the default the model would silently receive only a fraction of its context and
-> write from almost nothing. `RAG_OLLAMA_NUM_CTX=16384` fixes that. Lower it to `8192`
-> if you are short on RAM or VRAM.
+> **Context window.** Ollama loads models with a 4096-token window by default. The prompts this pipeline assembles contain the retrieved passages and routinely exceed that, so the default would cause the model to be given a silently truncated prompt — producing text that ignores most of its sources. `RAG_OLLAMA_NUM_CTX` must therefore remain comfortably above the prompt size. Mistral 7B supports up to 32768; reduce to `8192` on memory-constrained hosts.
 
-To use a remote OpenAI-compatible API instead:
+To use a hosted OpenAI-compatible endpoint instead:
 
 ```ini
 RAG_LLM_PROVIDER=openai
@@ -134,130 +206,186 @@ RAG_OPENAI_BASE_URL=https://api.cerebras.ai/v1
 RAG_OPENAI_MODEL=gpt-oss-120b
 ```
 
-### Retrieval & pipeline
+### Retrieval and pipeline
 
-| Variable | Default | Notes |
+| Variable | Default | Description |
 |---|---|---|
-| `RAG_TOP_K` | `5` | Chunks kept after reranking |
-| `RAG_MAX_PAPERS` | `5` | Papers downloaded per topic |
-| `RAG_SURVEY_DEFAULT_PAPERS` | `10` | Papers in the survey table |
-| `RAG_CHUNK_SIZE` / `RAG_CHUNK_OVERLAP` | `1000` / `350` | |
-| `RAG_EMBEDDING_MODEL` | `BAAI/bge-base-en-v1.5` | |
-| `RAG_CROSS_ENCODER_MODEL` | `cross-encoder/ms-marco-MiniLM-L-12-v2` | Reranker |
-| `RAG_BM25_ALPHA` | `0.5` | 0 = pure BM25, 1 = pure vector |
+| `RAG_TOP_K` | `5` | Passages retained after reranking. |
+| `RAG_MAX_PAPERS` | `5` | Papers downloaded per topic. |
+| `RAG_SURVEY_DEFAULT_PAPERS` | `10` | Papers included in the survey table. |
+| `RAG_CHUNK_SIZE` | `1000` | Characters per chunk. |
+| `RAG_CHUNK_OVERLAP` | `350` | Overlap between consecutive chunks. |
+| `RAG_EMBEDDING_MODEL` | `BAAI/bge-base-en-v1.5` | Sentence-transformer used for embeddings. |
+| `RAG_CROSS_ENCODER_MODEL` | `cross-encoder/ms-marco-MiniLM-L-12-v2` | Reranking model. |
+| `RAG_BM25_ALPHA` | `0.5` | Lexical/dense blend: `0` is pure BM25, `1` pure vector. |
 
 ### Server
 
-| Variable | Default |
-|---|---|
-| `RAG_API_HOST` / `RAG_API_PORT` | `127.0.0.1` / `8001` |
-| `RAG_CORS_ORIGINS` | the Vite dev and preview origins |
-| `RAG_LOG_LEVEL` | `INFO` |
+| Variable | Default | Description |
+|---|---|---|
+| `RAG_API_HOST` | `127.0.0.1` | Backend bind address. |
+| `RAG_API_PORT` | `8001` | Backend port. |
+| `RAG_CORS_ORIGINS` | Vite dev and preview origins | Comma-separated allowed origins; `*` permits any. |
+| `RAG_JOB_RETENTION_SECONDS` | `7200` | How long finished jobs are retained in memory. |
+| `RAG_LOG_LEVEL` | `INFO` | Logging verbosity. |
 
-The frontend reads `VITE_API_URL` from `frontend/.env` (production build) and
-`frontend/.env.development` (dev server).
+The frontend resolves its backend address from `VITE_API_URL`, declared in `frontend/.env` for production builds and `frontend/.env.development` for the dev server.
 
 ---
 
-## 5. Project layout
+## Command-line interface
+
+The full pipeline is available without the web interface:
+
+```bash
+python main.py run_all --query "Self-Healing Large Language Models"
+```
+
+| Command | Arguments | Description |
+|---|---|---|
+| `run_all` | `--query`, `--max` | Ingest, index, generate and evaluate in one pass. |
+| `ingest` | `--query`, `--max` | Search arXiv and download PDFs. |
+| `index` | — | Parse downloaded PDFs and rebuild the vector index. |
+| `retrieve` | `--query`, `--k`, `--strategy` | Inspect retrieval: HyDE output, candidates and rerank scores. |
+| `generate` | `--topic` | Generate a paper from the current index. |
+| `evaluate` | `--query` | Run the evaluation metrics against a generated paper. |
+
+Used programmatically:
+
+```python
+from src.pipeline.ui_pipeline import run_rag_for_ui_pipeline
+
+result = run_rag_for_ui_pipeline(
+    topic="Finetuning methods for large language models",
+    retrieval_strategy="hyde",
+    include_evaluation=True,
+    fast_mode=True,
+)
+
+print(result["paper_text"])
+print(result["faithfulness"], result["relevance"])
+```
+
+---
+
+## HTTP API
+
+| Method | Endpoint | Description |
+|---|---|---|
+| `GET` | `/api/health` | Provider readiness, active model and effective settings. |
+| `POST` | `/api/generate` | Start a paper generation job. Returns a `job_id`. |
+| `POST` | `/api/survey` | Start a literature survey job. Returns a `job_id`. |
+| `POST` | `/api/refine` | Apply a refinement instruction to an existing draft. |
+| `GET` | `/api/jobs/{job_id}` | Job status, progress events and result. |
+| `GET` | `/api/history` | List saved papers. |
+| `GET` · `DELETE` | `/api/history/{fname}` | Load or delete a saved paper. |
+| `POST` | `/api/history/save` | Persist a result. |
+| `POST` | `/api/fix-citations` | Rebuild citations from source metadata. |
+| `POST` | `/api/export/pdf` · `/docx` | Export the paper. |
+| `POST` | `/api/export/survey-docx` · `/survey-xlsx` · `/analysis-xlsx` | Export tabular output. |
+| `GET` | `/api/download` | Retrieve a previously generated file. |
+
+Interactive documentation is served at `http://127.0.0.1:8001/docs`.
+
+---
+
+## Project structure
 
 ```text
 ResearchGPT/
-├── .env                 # active configuration (Ollama + mistral:7b)
-├── .env.example         # template
-├── main.py              # CLI entry point
-├── ui.py                # legacy Streamlit UI
+├── .env                      Active configuration
+├── .env.example              Reference configuration
+├── main.py                   Command-line entry point
+├── ui.py                     Legacy Streamlit interface
+├── start.ps1                 Windows launcher
 ├── requirements.txt
 │
-├── api/                 # FastAPI backend
-│   ├── main.py          #   routes, health, exports
-│   ├── jobs.py          #   in-memory background job runner
-│   └── schemas.py       #   request models
+├── api/
+│   ├── main.py               Routes, health, export endpoints
+│   ├── jobs.py               Background job runner
+│   └── schemas.py            Request models
 │
-├── config/config.py     # every setting, read from .env
+├── config/
+│   └── config.py             Centralised settings
 │
 ├── src/
-│   ├── ingestion/       # arXiv search + download
-│   ├── processing/      # PDF parsing + chunking
-│   ├── embedding/       # ChromaDB vector store
-│   ├── retrieval/       # hybrid search, HyDE, reranking
-│   ├── generation/      # llm_client.py (transport) + generator.py (prompts)
-│   ├── evaluation/      # G-Eval, ROUGE-L, similarity
-│   ├── analysis/        # survey table extraction
-│   ├── output_pdf/      # PDF / LaTeX / DOCX writers
-│   ├── history/         # saved results
-│   └── pipeline/        # end-to-end orchestration
+│   ├── ingestion/            arXiv search and download
+│   ├── processing/           PDF parsing and chunking
+│   ├── embedding/            ChromaDB vector store
+│   ├── retrieval/            Hybrid search, HyDE, reranking
+│   ├── generation/           LLM transport and prompt assembly
+│   ├── evaluation/           G-Eval, ROUGE-L, similarity analysis
+│   ├── analysis/             Survey table extraction
+│   ├── output_pdf/           PDF, LaTeX and DOCX writers
+│   ├── history/              Result persistence
+│   └── pipeline/             End-to-end orchestration
 │
-├── frontend/            # React + TypeScript + Vite UI
+├── frontend/
 │   └── src/
-│       ├── App.tsx      #   shell, sessions, job polling
-│       ├── api.ts       #   typed backend client
-│       ├── components/  #   health badge, progress, landing, theme
-│       ├── index.css    #   design tokens (light + dark)
-│       └── App.css      #   component styles
+│       ├── App.tsx           Application shell and job polling
+│       ├── api.ts            Typed backend client
+│       ├── components/       Menus, status, progress, landing
+│       ├── index.css         Design tokens
+│       └── App.css           Component styles
 │
-├── tests/               # Playwright suites (react/ + legacy Streamlit)
-├── scripts/             # documentation PDF generators
-├── docs/                # DOCUMENTATION.md, paper source, generated PDFs
+├── tests/                    Playwright end-to-end suites
+├── scripts/                  Documentation generators
+├── docs/                     Extended documentation and paper source
 │
-├── data/                # downloaded papers, vector DB, history  (git-ignored)
-├── output/              # generated papers                       (git-ignored)
-└── logs/                # rotating log file                      (git-ignored)
+├── data/                     Papers, vector store, history (generated)
+├── output/                   Generated papers (generated)
+└── logs/                     Rotating application log (generated)
 ```
 
-### How the pieces fit
+### Notable modules
 
-* **`src/generation/llm_client.py`** is the only place that talks to an LLM. It handles
-  both providers, retries, timeouts and the Ollama `num_ctx` / `keep_alive` options, and
-  exposes `LLMClient.health()`, which backs `/api/health`.
-* **`src/generation/generator.py`** builds prompts and post-processes output. It
-  re-exports `LLMClient` so older imports keep working.
-* **`api/jobs.py`** runs long pipeline calls on daemon threads; the frontend polls
-  `/api/jobs/{id}` for progress. Finished jobs are pruned after
-  `RAG_JOB_RETENTION_SECONDS`.
+- **`src/generation/llm_client.py`** is the sole point of contact with a language model. It implements both providers, retry and timeout handling, and the Ollama context and residency options, and exposes `LLMClient.health()`, which backs the health endpoint.
+- **`src/generation/generator.py`** assembles prompts and post-processes model output. It re-exports `LLMClient` for backwards compatibility.
+- **`api/jobs.py`** executes pipeline calls on daemon threads and records progress events for the client to poll. Completed jobs are evicted after `RAG_JOB_RETENTION_SECONDS`.
 
 ---
 
-## 6. Tests
+## Testing
+
+The frontend suite runs against a mocked backend and requires neither a model nor network access:
 
 ```bash
 npx playwright test --config=playwright.react.config.ts
 ```
 
-25 end-to-end tests covering the React UI against a mocked backend — no model or network
-needed. `playwright.config.ts` targets the legacy Streamlit UI instead.
+Twenty-five end-to-end tests cover the empty state, settings persistence, the survey and generation flows, backend failure handling, export downloads, refinement, and session and history management.
+
+A separate configuration targets the legacy Streamlit interface:
+
+```bash
+npx playwright test --config=playwright.config.ts
+```
 
 ---
 
-## 7. Troubleshooting
+## Troubleshooting
 
-| Symptom | Cause / fix |
+| Symptom | Resolution |
 |---|---|
-| Sidebar badge says **API offline** | The backend is not running. Start uvicorn (step 3). |
-| Badge is red, "not ready" | Hover it. Usually Ollama is stopped (`ollama serve`) or the model was never pulled (`ollama pull mistral:7b`). |
-| Generation is very slow | A 7B model on CPU is slow; this is expected. Lower `RAG_SURVEY_DEFAULT_PAPERS` and `RAG_TOP_K`, or lower `RAG_OLLAMA_NUM_CTX`. |
-| Paper ignores the retrieved sources | `RAG_OLLAMA_NUM_CTX` is too small for the prompt — raise it. |
-| "LaTeX PDF" export fails | `pdflatex` is not installed. The normal PDF export does not need it. |
-| Out of memory loading the model | Lower `RAG_OLLAMA_NUM_CTX` to `8192`, or use a smaller model. |
-| Word / Excel export fails | `pip install -r requirements.txt` — `python-docx` and `openpyxl` are required. |
+| Status indicator reads **API offline** | The backend is not running. Start Uvicorn as described above. |
+| Status indicator is red | Hover for detail. Typically the Ollama daemon is stopped (`ollama serve`) or the model has not been pulled (`ollama pull mistral:7b`). |
+| Generation is slow | Expected for a 7B model without GPU acceleration. Reduce `RAG_SURVEY_DEFAULT_PAPERS`, `RAG_TOP_K` or `RAG_OLLAMA_NUM_CTX`. |
+| Output disregards the retrieved sources | `RAG_OLLAMA_NUM_CTX` is too small for the assembled prompt. Increase it. |
+| Model fails to load | Insufficient memory. Reduce `RAG_OLLAMA_NUM_CTX` to `8192` or select a smaller model. |
+| LaTeX PDF export fails | `pdflatex` is not on the path. The standard PDF export has no such dependency. |
+| Word or Excel export fails | Reinstall dependencies; `python-docx` and `openpyxl` are required. |
+| No papers found for a topic | Broaden the phrasing, or enable **Refresh papers from arXiv** in settings to force a new download. |
 
 ---
 
-## 8. How it works
+## How it works
 
-**HyDE** — short questions embed poorly against long technical papers, so the model first
-drafts a hypothetical abstract and *that* is embedded to find real matches.
+**Hypothetical document embeddings (HyDE).** A short query embeds poorly against long technical prose. The system first asks the model to draft a hypothetical abstract answering the query, then embeds that document to locate real papers with similar semantics. This substantially improves recall for brief or informally worded topics.
 
-**Hybrid retrieval** — BM25 (exact terms) and vector search (meaning) are blended with
-`RAG_BM25_ALPHA`, then a cross-encoder rescores the shortlist by reading query and
-passage together.
+**Hybrid retrieval.** Lexical matching (BM25) captures exact terminology — model names, metric names, acronyms — while dense retrieval captures meaning. Scores from both are normalised and blended according to `RAG_BM25_ALPHA`, with the weighting varying by strategy: semantic strategies favour vectors, decomposition favours lexical precision.
 
-**Sub-question decomposition** — "compare X and Y" is split into independent retrievals
-per sub-question, then synthesised.
+**Cross-encoder reranking.** Bi-encoder retrieval compares independently computed embeddings and is therefore approximate. A cross-encoder reads the query and candidate passage together and produces a direct relevance score. Applying it to the shortlist markedly improves the precision of the final context.
 
-**G-Eval** — a second LLM pass scores the draft 1–5 for *faithfulness* (is every claim
-supported by the retrieved text?) and *relevance* (does it answer the topic?). Both
-scores, and the judge's reasoning, are shown in the UI.
+**G-Eval.** Lexical metrics are poor proxies for factual quality, so a second model pass acts as a judge, scoring the draft from 1 to 5 on two axes: *faithfulness*, whether each claim is supported by the retrieved passages, and *relevance*, whether the paper addresses the stated topic. Scores and the judge's written reasoning are both surfaced in the interface.
 
-Scores of 4–5 are good; 3 means the context was thin; 1–2 points at a retrieval problem
-rather than a generation one.
+Interpreting the scores: 4–5 indicates a well-grounded draft; 3 generally indicates thin retrieved context; 1–2 points to a retrieval failure rather than a generation failure, and is best addressed by refreshing sources or adjusting the strategy.

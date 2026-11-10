@@ -120,7 +120,7 @@ export default function SurveyPanel({
                   <td>
                     {link ? (
                       <a href={link} target="_blank" rel="noreferrer">
-                        📄 arXiv
+                        arXiv
                       </a>
                     ) : (
                       "—"
@@ -136,7 +136,7 @@ export default function SurveyPanel({
       {gaps.length > 0 && (
         <div className="expander">
           <button className="expander-toggle" onClick={() => setShowGaps(!showGaps)}>
-            {showGaps ? "▾" : "▸"} 🔍 Research Gap Summary ({gaps.length} papers)
+            {showGaps ? "▾" : "▸"} Research Gap Summary ({gaps.length} papers)
           </button>
           {showGaps && (
             <div className="expander-body">
@@ -167,10 +167,10 @@ export default function SurveyPanel({
       )}
 
       <div className="export-buttons survey-export-row">
-        <button onClick={downloadCsv}>⬇ CSV</button>
-        <button onClick={downloadXlsx}>⬇ Excel</button>
-        <button onClick={downloadDocx}>⬇ Word (.docx)</button>
-        {pdfPath && <button onClick={downloadPdf}>⬇ PDF (IEEE)</button>}
+        <button onClick={downloadCsv}>↓ CSV</button>
+        <button onClick={downloadXlsx}>↓ Excel</button>
+        <button onClick={downloadDocx}>↓ Word (.docx)</button>
+        {pdfPath && <button onClick={downloadPdf}>↓ PDF (IEEE)</button>}
       </div>
     </div>
   );
